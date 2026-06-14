@@ -13,14 +13,121 @@
     />
     <meta name="theme-color" content="#2563EB" />
 
+    <!-- Canonical (⚠️ replace https://trine.app with your real domain) -->
+    <link rel="canonical" href="https://trine.app/" />
+
     <!-- Open Graph -->
     <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Trine" />
+    <meta property="og:url" content="https://trine.app/" />
     <meta property="og:title" content="Trine — your AI shopping shortlist" />
     <meta
       property="og:description"
       content="Three confident options with reasons, instead of 22 open tabs. Get your evenings back."
     />
+    <meta property="og:image" content="https://trine.app/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+
+    <!-- Twitter -->
     <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Trine — your AI shopping shortlist" />
+    <meta
+      name="twitter:description"
+      content="Three confident options with reasons, instead of 22 open tabs. Get your evenings back."
+    />
+    <meta name="twitter:image" content="https://trine.app/og-image.png" />
+
+    <!-- Structured data (JSON-LD): Organization, WebSite, SoftwareApplication, FAQ.
+         ⚠️ Replace https://trine.app with your real domain on deploy. -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "Organization",
+            "@id": "https://trine.app/#organization",
+            "name": "Trine",
+            "url": "https://trine.app/",
+            "slogan": "Your AI shopping shortlist.",
+            "logo": "https://trine.app/favicon.svg",
+            "description": "Trine is an AI shopping-decision app that turns an overwhelming field of options into three confident, reasoned choices."
+          },
+          {
+            "@type": "WebSite",
+            "@id": "https://trine.app/#website",
+            "url": "https://trine.app/",
+            "name": "Trine",
+            "publisher": { "@id": "https://trine.app/#organization" }
+          },
+          {
+            "@type": "SoftwareApplication",
+            "name": "Trine",
+            "applicationCategory": "ShoppingApplication",
+            "operatingSystem": "Web, iOS, Android",
+            "description": "Ask in plain words and get three options back, each with a clear reason it made the cut. Decide in minutes instead of an evening.",
+            "offers": [
+              { "@type": "Offer", "name": "Free", "price": "0", "priceCurrency": "USD" },
+              { "@type": "Offer", "name": "Premium", "price": "9.99", "priceCurrency": "USD" },
+              { "@type": "Offer", "name": "Family", "price": "16.99", "priceCurrency": "USD" }
+            ]
+          },
+          {
+            "@type": "FAQPage",
+            "mainEntity": [
+              {
+                "@type": "Question",
+                "name": "Will I be charged after the free trial?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "No. You stay on the free plan automatically — five shortlists a month, no card, no surprise charge. Upgrade only if you want to."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Can I cancel anytime?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Yes, in two taps, and there's a 30-day money-back guarantee on paid plans."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Is my data private?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Your searches are yours. We never sell them, there are no paid placements in your results, and you can delete your history anytime. Encrypted in transit and at rest."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Does it work where I shop?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Bring the thing however you've got it — paste a link, drop a screenshot, or just describe it."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "How does Trine actually pick?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "It reads what you asked for, weighs price, reviews, and fit, and returns the three that best match — each with a plain reason and an honest \"not for\" note. The order is never for sale."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "What devices can I use?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Web, iOS, and Android — your shortlists sync across all of them."
+                }
+              }
+            ]
+          }
+        ]
+      }
+    </script>
 
     <!-- Fonts: Inter (body/UI) + DM Serif Display (headlines) -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />

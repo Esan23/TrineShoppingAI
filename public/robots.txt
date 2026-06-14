@@ -1,0 +1,6 @@
+# Trine — robots.txt
+# ⚠️ Replace https://trine.app with your real domain on deploy.
+User-agent: *
+Allow: /
+
+Sitemap: https://trine.app/sitemap.xml
