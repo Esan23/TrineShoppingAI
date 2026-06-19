@@ -1,12 +1,22 @@
-# Netlify deploy configuration for the Trine landing page (Vite SPA)
+# Netlify deploy configuration for Trine (Vite SPA + serverless functions)
 [build]
   command = "npm run build"
   publish = "dist"
+  functions = "netlify/functions"
 
 [build.environment]
   NODE_VERSION = "20"
 
-# Serve index.html for any route (single-page app)
+[functions]
+  node_bundler = "esbuild"
+
+# Let the serverless functions handle their own path (before the SPA catch-all)
+[[redirects]]
+  from = "/.netlify/functions/*"
+  to = "/.netlify/functions/:splat"
+  status = 200
+
+# Serve index.html for any other route (single-page app)
 [[redirects]]
   from = "/*"
   to = "/index.html"

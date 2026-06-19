@@ -1,29 +1,74 @@
-# Trine — Landing Page
+# Trine — *your AI shopping shortlist*
 
-Front-end marketing landing page for **Trine** (*your AI shopping shortlist*),
-an AI shopping-decision app that turns an overwhelming field of options into
-three confident, reasoned choices. Built to the Landing Page PRD and Brand
-Design System (see [`docs/`](docs/)).
+**Trine** turns an overwhelming field of options into three confident, reasoned
+choices. Ask in plain words — *"a rain jacket for a 10-year-old, under $80"* —
+and get three options back, each with a clear reason it made the cut.
+
+This repo holds both the **marketing site** and the **working app**, built to the
+Landing Page PRD and Brand Design System (see [`docs/`](docs/)).
 
 > **Naming:** "Shortlist" was the working placeholder; **Trine** is the chosen
 > brand (see [`docs/Shortlist-Naming-Analysis.md`](docs/Shortlist-Naming-Analysis.md)).
 > Per that analysis, "shortlist" is kept as a lowercase *feature word* (the
 > three-option list), while "Trine" is the product name.
 
+## Routes
+
+| Path | What it is |
+|---|---|
+| `/` | Marketing landing page |
+| `/app` | The decision engine — query → shortlist of three (works as a guest) |
+| `/login` | Passwordless magic-link sign-in (Supabase) |
+| `/auth/callback` | Magic-link return handler |
+
 ## Stack
 
-- **Vite + React 18 + TypeScript**
+- **Vite + React 18 + TypeScript** with **react-router-dom**
 - **Tailwind CSS 3.4** (custom brand tokens, class-based dark mode)
-- **Framer Motion** (hero animation, scroll reveals)
+- **Framer Motion** (shortlist reveals, hero animation, scroll reveals)
+- **Supabase** — passwordless auth + `decisions` table with Row-Level Security
+- **Netlify Functions** — `curate` brokers the **Claude API** server-side
 - **Heroicons**
 - Fonts: **Inter** (UI/body) + **DM Serif Display** (headlines)
+
+## How the decision loop works
+
+1. The user describes what they need in the Natural-Language Query Bar.
+2. The client calls the `/.netlify/functions/curate` function.
+3. That function asks Claude (`claude-sonnet-4-6`, via tool-use) for **exactly
+   three** ranked options, each with a "why it's here / who it's not for".
+4. The Shortlist Stack renders the three with a Confidence Meter; the user picks
+   one, and (if signed in) the decision is saved to Supabase.
+
+> Without an `ANTHROPIC_API_KEY`, the function returns an **illustrative demo
+> shortlist** so the experience works everywhere. Without Supabase env vars, the
+> app runs in **guest mode** (the loop works; saved history is disabled).
 
 ## Local development
 
 ```bash
 npm install
-npm run dev      # http://localhost:5173
+cp .env.example .env   # fill in keys (optional — app runs without them)
+
+# UI only (curate falls back to a local demo shortlist):
+npm run dev            # http://localhost:5173
+
+# Full stack incl. the Netlify function (real Claude calls):
+npm install -g netlify-cli
+netlify dev            # serves the SPA + functions together
 ```
+
+### Environment variables
+
+See [`.env.example`](.env.example). `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY`
+are browser-safe (anon key is RLS-guarded). `ANTHROPIC_API_KEY` is **server-only**
+(used by the Netlify function) — never prefix it with `VITE_`.
+
+### Database
+
+Apply [`supabase/migrations/0001_decisions.sql`](supabase/migrations/0001_decisions.sql)
+to your Supabase project (SQL editor or `supabase db push`) to create the
+`decisions` table and its RLS policies.
 
 ## Production build
 

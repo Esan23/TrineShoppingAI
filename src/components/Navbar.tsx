@@ -65,6 +65,9 @@ export default function Navbar({ theme, onToggleTheme }: NavbarProps) {
 
         <div className="hidden items-center gap-3 lg:flex">
           <ThemeToggle theme={theme} onToggle={onToggleTheme} />
+          <Button href="/app" variant="ghost" size="md">
+            Open app
+          </Button>
           <Button href="#start" size="md">
             Start free
           </Button>
@@ -133,9 +136,17 @@ export default function Navbar({ theme, onToggleTheme }: NavbarProps) {
                 ))}
               </ul>
               <Button
-                href="#start"
+                href="/app"
+                variant="ghost"
                 onClick={() => setOpen(false)}
                 className="mt-6 w-full"
+              >
+                Open app
+              </Button>
+              <Button
+                href="#start"
+                onClick={() => setOpen(false)}
+                className="mt-3 w-full"
               >
                 Start free
               </Button>

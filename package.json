@@ -1,7 +1,7 @@
 {
-  "name": "trine-landing",
+  "name": "trine",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.1.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -12,9 +12,11 @@
     "@fontsource/dm-serif-display": "^5.2.8",
     "@fontsource/inter": "^5.2.8",
     "@heroicons/react": "^2.2.0",
+    "@supabase/supabase-js": "^2.108.2",
     "framer-motion": "^11.15.0",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^7.18.0"
   },
   "devDependencies": {
     "@types/react": "^18.3.18",

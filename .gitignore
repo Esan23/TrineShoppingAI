@@ -8,3 +8,9 @@ dist-ssr
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# Local env + Netlify
+.env
+.env.*
+!.env.example
+.netlify
