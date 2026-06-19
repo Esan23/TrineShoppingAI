@@ -42,6 +42,24 @@ interface ShortlistOption {
   reviewScore?: number | null;
 }
 
+interface Preferences {
+  budgetMax: number | null;
+  preferredBrands: string[];
+  qualityTier: "budget" | "mid" | "premium";
+  minReviewScore: number;
+}
+
+/** A plain-language line describing the user's standing preferences (or ""). */
+function prefsLine(p?: Preferences): string {
+  if (!p) return "";
+  const parts: string[] = [];
+  if (p.qualityTier === "budget") parts.push("leans toward the cheapest option that works");
+  if (p.qualityTier === "premium") parts.push("prefers premium, buy-it-for-life quality");
+  if (p.preferredBrands.length) parts.push(`favors these brands when they fit: ${p.preferredBrands.join(", ")}`);
+  if (p.minReviewScore > 0) parts.push(`wants a review score of at least ${p.minReviewScore} stars`);
+  return parts.length ? `\n- The shopper ${parts.join("; ")}.` : "";
+}
+
 const json = (status: number, body: unknown) => ({
   statusCode: status,
   headers: {
@@ -65,10 +83,14 @@ export const handler = async (event: {
   const started = Date.now();
   let query = "";
   let budgetMax: number | undefined;
+  let preferences: Preferences | undefined;
   try {
     const parsed = JSON.parse(event.body || "{}");
     query = String(parsed.query || "").trim();
     budgetMax = typeof parsed.budgetMax === "number" ? parsed.budgetMax : undefined;
+    preferences = parsed.preferences && typeof parsed.preferences === "object"
+      ? (parsed.preferences as Preferences)
+      : undefined;
   } catch {
     return json(400, { error: "Invalid JSON body" });
   }
@@ -88,13 +110,13 @@ export const handler = async (event: {
 
   try {
     // Tier 1: try to gather real retailer listings.
-    const products = await fetchCandidates(query, budgetMax);
+    const products = await fetchCandidates(query, budgetMax, preferences);
     if (products.length > 0) {
-      const ranked = await rankRealProducts(apiKey, query, products, budgetMax);
+      const ranked = await rankRealProducts(apiKey, query, products, budgetMax, preferences);
       if (ranked.length > 0) return reply(ranked, "retailers");
     }
     // Tier 2: no retailer data — let Claude suggest representative picks.
-    return reply(await generateShortlist(apiKey, query, budgetMax), "ai");
+    return reply(await generateShortlist(apiKey, query, budgetMax, preferences), "ai");
   } catch (err) {
     console.error("curate error:", err);
     return reply(demoShortlist(query, budgetMax), "demo");
@@ -103,7 +125,11 @@ export const handler = async (event: {
 
 // ── Retailer fetching ────────────────────────────────────────────────────
 
-async function fetchCandidates(query: string, budgetMax?: number): Promise<Product[]> {
+async function fetchCandidates(
+  query: string,
+  budgetMax?: number,
+  preferences?: Preferences
+): Promise<Product[]> {
   const jobs: Promise<Product[]>[] = [];
 
   const ebayToken = await getEbayToken();
@@ -117,11 +143,15 @@ async function fetchCandidates(query: string, budgetMax?: number): Promise<Produ
   const settled = await Promise.allSettled(jobs);
   const all = settled.flatMap((s) => (s.status === "fulfilled" ? s.value : []));
 
-  // De-duplicate by lowercased title; keep in-budget items with a usable URL.
+  const minReview = preferences?.minReviewScore ?? 0;
+
+  // De-duplicate by lowercased title; keep in-budget items with a usable URL,
+  // and drop ones that fall below the user's minimum review score (when known).
   const seen = new Set<string>();
   return all.filter((p) => {
     if (!p.productUrl || !p.title) return false;
     if (budgetMax && p.price > budgetMax) return false;
+    if (minReview > 0 && p.reviewScore != null && p.reviewScore < minReview) return false;
     const key = p.title.toLowerCase().trim();
     if (seen.has(key)) return false;
     seen.add(key);
@@ -214,14 +244,15 @@ async function rankRealProducts(
   apiKey: string,
   query: string,
   products: Product[],
-  budgetMax?: number
+  budgetMax?: number,
+  preferences?: Preferences
 ): Promise<ShortlistOption[]> {
   const budgetLine = budgetMax ? `\n- Hard budget ceiling: $${budgetMax}.` : "";
   const system = `You are Trine, a calm, trustworthy shopping-decision assistant. From the candidate products below, pick exactly THREE — like a smart friend who already did the research.
 
 Rules:
 - Rank 1 = the safest low-regret pick for most people; then a value pick and a premium pick.
-- Judge on price-for-value, review score and volume, brand, and fit to the request.${budgetLine}
+- Judge on price-for-value, review score and volume, brand, and fit to the request.${budgetLine}${prefsLine(preferences)}
 - Each pick needs a one-sentence "why" and an honest "who it's NOT for".
 - "match" is a 0–100 confidence score; keep them distinct and honest.
 - Voice: plain, economical, reassuring. No hype, no exclamation points.
@@ -304,7 +335,8 @@ Rules:
 async function generateShortlist(
   apiKey: string,
   query: string,
-  budgetMax?: number
+  budgetMax?: number,
+  preferences?: Preferences
 ): Promise<ShortlistOption[]> {
   const budgetLine = budgetMax ? `\n- Hard budget ceiling: $${budgetMax}.` : "";
   const system = `You are Trine, a calm, trustworthy shopping-decision assistant. A busy person describes what they need in plain words and you hand back a confident shortlist of exactly THREE options.
@@ -313,7 +345,7 @@ Rules:
 - Recommend real, well-known product types/models a shopper could actually find today.
 - Rank 1 = the safest low-regret pick for most people; then a value option and a premium option.
 - Each option needs a one-sentence "why" and an honest "who it's NOT for".
-- "price" is a realistic estimate (e.g. "~$70"); stay at or under any stated budget.${budgetLine}
+- "price" is a realistic estimate (e.g. "~$70"); stay at or under any stated budget.${budgetLine}${prefsLine(preferences)}
 - "url" must be a Google Shopping search URL: https://www.google.com/search?tbm=shop&q=<url-encoded query>
 - "match" is a 0–100 confidence score; keep them distinct and honest.
 - Voice: plain, economical, reassuring. No hype, no exclamation points.`;

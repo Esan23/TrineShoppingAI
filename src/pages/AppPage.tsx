@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { ClockIcon } from "@heroicons/react/24/outline";
 import AppHeader from "../components/app/AppHeader";
@@ -6,8 +6,15 @@ import QueryBar from "../components/app/QueryBar";
 import ShortlistStack from "../components/app/ShortlistStack";
 import DecisionHistory from "../components/app/DecisionHistory";
 import { curate, saveDecision } from "../lib/curate";
+import { getPreferences } from "../lib/preferences";
 import { useAuth } from "../lib/auth";
-import type { CurateResponse, CurateSource, ShortlistOption } from "../lib/types";
+import {
+  DEFAULT_PREFERENCES,
+  type CurateResponse,
+  type CurateSource,
+  type Preferences,
+  type ShortlistOption,
+} from "../lib/types";
 
 type Status = "idle" | "loading" | "done";
 
@@ -17,12 +24,23 @@ export default function AppPage() {
   const [result, setResult] = useState<CurateResponse | null>(null);
   const [chosen, setChosen] = useState<string | null>(null);
   const [historyVersion, setHistoryVersion] = useState(0);
+  const [prefs, setPrefs] = useState<Preferences>(DEFAULT_PREFERENCES);
+
+  // Load the user's saved preferences to personalize the shortlist.
+  useEffect(() => {
+    if (user) getPreferences().then(setPrefs);
+    else setPrefs(DEFAULT_PREFERENCES);
+  }, [user]);
 
   async function run(query: string, budgetMax?: number) {
     setStatus("loading");
     setResult(null);
     setChosen(null);
-    const res = await curate({ query, budgetMax });
+    const res = await curate({
+      query,
+      budgetMax: budgetMax ?? prefs.budgetMax ?? undefined,
+      preferences: prefs,
+    });
     setResult(res);
     setStatus("done");
   }

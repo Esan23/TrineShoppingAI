@@ -23,6 +23,12 @@ export default function AppHeader() {
           <ThemeToggle theme={theme} onToggle={toggle} />
           {configured && user ? (
             <div className="flex items-center gap-3">
+              <Link
+                to="/preferences"
+                className="text-sm font-medium text-muted transition hover:text-ink dark:text-slate-400 dark:hover:text-white"
+              >
+                Preferences
+              </Link>
               <span className="hidden max-w-[160px] truncate text-sm text-muted dark:text-slate-400 sm:inline">
                 {user.email}
               </span>

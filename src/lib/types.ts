@@ -22,9 +22,27 @@ export interface ShortlistOption {
   reviewScore?: number | null;
 }
 
+export type QualityTier = "budget" | "mid" | "premium";
+
+/** User shopping preferences that personalize the shortlist. */
+export interface Preferences {
+  budgetMax: number | null;
+  preferredBrands: string[];
+  qualityTier: QualityTier;
+  minReviewScore: number;
+}
+
+export const DEFAULT_PREFERENCES: Preferences = {
+  budgetMax: null,
+  preferredBrands: [],
+  qualityTier: "mid",
+  minReviewScore: 0,
+};
+
 export interface CurateRequest {
   query: string;
   budgetMax?: number;
+  preferences?: Preferences;
 }
 
 /** Where the shortlist came from:

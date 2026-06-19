@@ -82,9 +82,14 @@ are browser-safe (anon key is RLS-guarded). `ANTHROPIC_API_KEY` is **server-only
 
 ### Database
 
-Apply [`supabase/migrations/0001_decisions.sql`](supabase/migrations/0001_decisions.sql)
-to your Supabase project (SQL editor or `supabase db push`) to create the
-`decisions` table and its RLS policies.
+Apply the migrations in [`supabase/migrations/`](supabase/migrations) to your
+Supabase project (SQL editor or `supabase db push`):
+- `0001_decisions.sql` — saved decisions (history + Time Reclaimed), RLS-scoped.
+- `0002_preferences.sql` — per-user preferences (budget, brands, quality tier,
+  min review score) that personalize the shortlist, RLS-scoped.
+
+Signed-in users set preferences at `/preferences`; they're loaded on `/app` and
+passed to the curate function to tune every shortlist.
 
 ## Production build
 

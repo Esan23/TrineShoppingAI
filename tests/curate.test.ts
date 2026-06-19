@@ -108,6 +108,41 @@ describe("curate function", () => {
     expect(names).not.toContain("Over Budget Chair D");
   });
 
+  it("applies preferences: below-min-review products are filtered out", async () => {
+    process.env.ANTHROPIC_API_KEY = "sk-test";
+    process.env.BESTBUY_API_KEY = "bb-test";
+    // Capture the candidate ids Claude was asked to rank.
+    let candidateIds: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, opts?: { body?: string }) => {
+        url = String(url);
+        if (url.includes("api.bestbuy.com")) {
+          return { ok: true, json: async () => ({ products: [
+            { sku: 1, name: "High Rated", salePrice: 100, thumbnailImage: "", url: "http://x/1", customerReviewAverage: "4.6", customerReviewCount: 50, manufacturer: "M", onlineAvailability: true },
+            { sku: 2, name: "Low Rated", salePrice: 90, thumbnailImage: "", url: "http://x/2", customerReviewAverage: "3.2", customerReviewCount: 50, manufacturer: "M", onlineAvailability: true },
+          ] }) };
+        }
+        // anthropic
+        const userText = JSON.parse(opts!.body!).messages[0].content;
+        candidateIds = [...String(userText).matchAll(/"id":\s*"([^"]+)"/g)].map((m) => m[1]);
+        return { ok: true, json: async () => ({ content: [{ type: "tool_use", input: { picks: [
+          { id: "bestbuy-1", rank: 1, match: 95, why: "w", notFor: "n" },
+          { id: "bestbuy-1", rank: 2, match: 80, why: "w", notFor: "n" },
+          { id: "bestbuy-1", rank: 3, match: 70, why: "w", notFor: "n" },
+        ] } }] }) };
+      })
+    );
+    const res = await handler({ httpMethod: "POST", body: JSON.stringify({
+      query: "office chair",
+      preferences: { budgetMax: null, preferredBrands: [], qualityTier: "mid", minReviewScore: 4.0 },
+    }) });
+    expect(res.statusCode).toBe(200);
+    // The 3.2-star "Low Rated" product must have been excluded from candidates.
+    expect(candidateIds).toContain("bestbuy-1");
+    expect(candidateIds).not.toContain("bestbuy-2");
+  });
+
   it("retailers tier falls back to demo if Anthropic call fails", async () => {
     process.env.ANTHROPIC_API_KEY = "sk-test";
     process.env.BESTBUY_API_KEY = "bb-test";
