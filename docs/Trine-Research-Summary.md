@@ -1,8 +1,8 @@
-# Trine Shopping AI Research Summary
+# Trine Research Summary
 
 ## Project Overview
 
-**Trine Shopping AI** is an AI-powered shopping-decision app that collapses overwhelming option sets into a confident shortlist of three. A user asks in plain language — *"a rain jacket for a 10-year-old, under $80"* — and receives three curated options back, each accompanied by a clear, human-readable reason it made the cut. The product's core function is **decision compression**: it converts hours of comparison, tab-hoarding, and second-guessing into a choice that takes minutes.
+**Trine** (*your AI shopping shortlist*) is an AI-powered shopping-decision app that collapses overwhelming option sets into a confident shortlist of three. A user asks in plain language — *"a rain jacket for a 10-year-old, under $80"* — and receives three curated options back, each accompanied by a clear, human-readable reason it made the cut. The product's core function is **decision compression**: it converts hours of comparison, tab-hoarding, and second-guessing into a choice that takes minutes.
 
 The primary target audience is **time-strapped working professionals** — exemplified by the "maximizer" avatar, Danielle — who lose hours to research and suffer disproportionately from choice overload, decision fatigue, and post-purchase regret. The business operates a freemium model with a ~$9.99/mo premium tier and is built on a modern, lightweight stack: **React** (front end), **Netlify** (hosting/serverless), and **Supabase** (database, auth, and backend services). The value Trine sells is not "more shopping" — it is **reclaimed time and decided-without-regret confidence**.
 
@@ -147,7 +147,7 @@ The primary target audience is **time-strapped working professionals** — exemp
 
 Danielle Reyes is **Problem Aware**: she feels the symptom acutely — *"twenty-two tabs," "a spreadsheet for a $60 piece of plastic," the "knot behind my sternum"* — but does not know a solution category exists. She blames the volume, the internet, and herself. Her diary makes the emotional stakes unmistakable: the *before* is overwhelm, self-directed guilt ("a competent woman would have decided an hour ago"), and resentment toward a process that "turns a simple purchase into a 40-tab project." This is the core insight that justifies Trine's existence — **the pain is not lack of options; it is the cognitive labor and regret of choosing among too many.**
 
-**How Trine Shopping AI is the antidote:**
+**How Trine is the antidote:**
 
 - **Against the 22 tabs and the spreadsheet** → Trine returns **exactly three** options. The diary's "during" entry — *"There was nothing to scroll… Three. And next to each one, in plain language, why"* — is the product's entire promise rendered as lived experience.
 - **Against "30 contradictory reviews and trusting none"** → each option carries a transparent **reason it made the cut**, replacing gamed star-paste with a defensible rationale she can trust at a glance.
