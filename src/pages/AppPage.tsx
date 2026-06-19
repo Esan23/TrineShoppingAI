@@ -4,6 +4,7 @@ import { ClockIcon } from "@heroicons/react/24/outline";
 import AppHeader from "../components/app/AppHeader";
 import QueryBar from "../components/app/QueryBar";
 import ShortlistStack from "../components/app/ShortlistStack";
+import DecisionHistory from "../components/app/DecisionHistory";
 import { curate, saveDecision } from "../lib/curate";
 import { useAuth } from "../lib/auth";
 import type { CurateResponse, ShortlistOption } from "../lib/types";
@@ -15,6 +16,7 @@ export default function AppPage() {
   const [status, setStatus] = useState<Status>("idle");
   const [result, setResult] = useState<CurateResponse | null>(null);
   const [chosen, setChosen] = useState<string | null>(null);
+  const [historyVersion, setHistoryVersion] = useState(0);
 
   async function run(query: string, budgetMax?: number) {
     setStatus("loading");
@@ -27,7 +29,11 @@ export default function AppPage() {
 
   function choose(opt: ShortlistOption) {
     setChosen(opt.name);
-    if (result && user) void saveDecision(result.query, opt, result.elapsedMs);
+    if (result && user) {
+      void saveDecision(result.query, opt, result.elapsedMs).then(() =>
+        setHistoryVersion((v) => v + 1)
+      );
+    }
   }
 
   return (
@@ -88,6 +94,8 @@ export default function AppPage() {
               )}
             </div>
           )}
+
+          {user && <DecisionHistory refreshKey={historyVersion} />}
         </div>
       </main>
     </div>

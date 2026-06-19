@@ -18,3 +18,9 @@ export const supabase: SupabaseClient | null = isSupabaseConfigured
       auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
     })
   : null;
+
+// Dev-only: expose the client for debugging in the console. Stripped from
+// production builds (import.meta.env.DEV is false there).
+if (import.meta.env.DEV && typeof window !== "undefined") {
+  (window as unknown as { supabase: SupabaseClient | null }).supabase = supabase;
+}
