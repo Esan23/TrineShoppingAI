@@ -2,22 +2,26 @@ import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { CheckCircleIcon, XMarkIcon } from "@heroicons/react/24/outline";
 import Logo from "./Logo";
+import { useAuth } from "../lib/auth";
 
 type Status = "idle" | "submitting" | "success";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /**
- * Front-end-only sign-up flow. Opens whenever the URL hash is "#start", so any
- * CTA can trigger it with a plain <a href="#start">. There's no backend — submit
- * simulates the request and shows a success state in the brand voice ("Started").
+ * Sign-up flow opened by any CTA via the "#start" URL hash. When Supabase is
+ * configured it sends a real passwordless magic link (and offers Google/Apple
+ * OAuth); otherwise it falls back to a simulated success so the static landing
+ * still demos. On confirmation the magic link returns the user to /auth/callback.
  */
 export default function SignUpModal() {
   const reduce = useReducedMotion();
+  const { configured, signInWithEmail, signInWithOAuth } = useAuth();
   const [open, setOpen] = useState(false);
   const [email, setEmail] = useState("");
   const [touched, setTouched] = useState(false);
   const [status, setStatus] = useState<Status>("idle");
+  const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Open/close from the URL hash
@@ -33,6 +37,7 @@ export default function SignUpModal() {
     if (open) {
       setStatus("idle");
       setTouched(false);
+      setError(null);
       const t = setTimeout(() => inputRef.current?.focus(), 60);
       return () => clearTimeout(t);
     }
@@ -58,13 +63,37 @@ export default function SignUpModal() {
 
   const valid = EMAIL_RE.test(email);
 
-  function submit(e: React.FormEvent) {
+  async function submit(e: React.FormEvent) {
     e.preventDefault();
     setTouched(true);
+    setError(null);
     if (!valid || status === "submitting") return;
     setStatus("submitting");
-    // Simulate a request; swap for a real auth/ESP call later.
-    setTimeout(() => setStatus("success"), 900);
+    if (!configured) {
+      // No backend wired — simulate so the static landing still demos.
+      setTimeout(() => setStatus("success"), 900);
+      return;
+    }
+    const { error } = await signInWithEmail(email);
+    if (error) {
+      setError(error);
+      setStatus("idle");
+    } else {
+      setStatus("success");
+    }
+  }
+
+  async function oauth(provider: "google" | "apple") {
+    setError(null);
+    if (!configured) {
+      // Simulate in the static demo.
+      setStatus("submitting");
+      setTimeout(() => setStatus("success"), 900);
+      return;
+    }
+    const { error } = await signInWithOAuth(provider);
+    // On success the browser redirects; only an error returns here.
+    if (error) setError(error);
   }
 
   return (
@@ -148,18 +177,18 @@ export default function SignUpModal() {
                     No card required. Five shortlists a month, free forever.
                   </p>
 
-                  {/* OAuth (UI only) */}
+                  {/* OAuth */}
                   <div className="mt-6 grid grid-cols-2 gap-3">
                     <button
                       type="button"
-                      onClick={submit}
+                      onClick={() => oauth("google")}
                       className="flex items-center justify-center gap-2 rounded-[10px] border border-slate-300 px-4 py-2.5 text-sm font-medium text-ink transition hover:bg-slate-50 dark:border-white/15 dark:text-slate-100 dark:hover:bg-white/5"
                     >
                       <span className="text-base">G</span> Google
                     </button>
                     <button
                       type="button"
-                      onClick={submit}
+                      onClick={() => oauth("apple")}
                       className="flex items-center justify-center gap-2 rounded-[10px] border border-slate-300 px-4 py-2.5 text-sm font-medium text-ink transition hover:bg-slate-50 dark:border-white/15 dark:text-slate-100 dark:hover:bg-white/5"
                     >
                       <span className="text-base"></span> Apple
@@ -201,6 +230,11 @@ export default function SignUpModal() {
                         className="mt-1.5 text-xs text-error"
                       >
                         Enter a valid email so we can send your link.
+                      </p>
+                    )}
+                    {error && (
+                      <p className="mt-2 text-xs text-error" role="alert">
+                        {error}
                       </p>
                     )}
 

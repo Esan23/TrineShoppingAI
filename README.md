@@ -93,6 +93,21 @@ npm run build    # type-checks, then outputs to dist/
 npm run preview  # preview the production build locally
 ```
 
+## Tests
+
+```bash
+npm test         # vitest — covers the curate function's three tiers
+```
+
+`tests/curate.test.ts` mocks eBay / Best Buy / Anthropic and asserts the
+`demo`, `ai`, and `retailers` tiers (including budget filtering and the
+graceful fallback when the Claude call fails).
+
+> **Auth email note:** the modal and `/login` send real Supabase magic links.
+> Supabase's built-in email has a low rate limit — configure a custom SMTP
+> provider (e.g. Resend/Postmark) under Auth settings for production, and enable
+> the Google/Apple providers to make those buttons work.
+
 ## Deploy to Netlify
 
 Config lives in `netlify.toml` (build = `npm run build`, publish = `dist`).

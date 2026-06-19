@@ -16,6 +16,8 @@ interface AuthState {
   configured: boolean;
   /** Send a passwordless magic link to the given email. */
   signInWithEmail: (email: string) => Promise<{ error: string | null }>;
+  /** Start an OAuth flow (redirects on success). */
+  signInWithOAuth: (provider: "google" | "apple") => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
 }
 
@@ -49,6 +51,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const { error } = await supabase.auth.signInWithOtp({
           email,
           options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
+        });
+        return { error: error?.message ?? null };
+      },
+      async signInWithOAuth(provider: "google" | "apple") {
+        if (!supabase) return { error: "Auth is not configured yet." };
+        const { error } = await supabase.auth.signInWithOAuth({
+          provider,
+          options: { redirectTo: `${window.location.origin}/auth/callback` },
         });
         return { error: error?.message ?? null };
       },
