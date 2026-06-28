@@ -215,12 +215,45 @@ async function fetchEbay(query: string, budgetMax: number | undefined, token: st
   );
 }
 
+/**
+ * Reduce a natural-language query to its meaningful product words for Best Buy's
+ * keyword search. Best Buy treats a multi-word `search=` term as an OR across
+ * words, so a raw sentence ("a decent rain jacket … under $80, I don't want to
+ * think about it") would match on filler words and return noise. We strip prices,
+ * ages, and stop-words so recall stays on the actual product nouns.
+ */
+function bestBuyKeywords(query: string): string {
+  const stop = new Set([
+    "a","an","the","for","my","me","i","im","need","needs","want","wants","looking",
+    "look","some","that","this","with","to","of","and","or","is","it","its","under",
+    "below","around","over","about","please","find","get","good","just","dont","really",
+    "think","buy","new","best","cheap","cheapest","quality","reliable","decent","nice",
+  ]);
+  const cleaned = query
+    .toLowerCase()
+    .replace(/['’]/g, "")                                       // "don't" -> "dont"
+    .replace(/\$\s?\d[\d,]*/g, " ")                                  // "$80", "$1,000"
+    .replace(/\b(?:under|below|around|over|less than|up to)\s+\d[\d,]*\b/g, " ")
+    .replace(/\b\d+[- ]?year[- ]?old\b/g, " ")                       // "10-year-old"
+    .replace(/[^a-z0-9\s-]/g, " ")                                   // punctuation
+    .split(/\s+/)
+    .filter((w) => w.length > 1 && !stop.has(w))                     // drop stop-words + stray single chars
+    .slice(0, 6)
+    .join(" ")
+    .trim();
+  return cleaned || query.trim();
+}
+
 async function fetchBestBuy(query: string, budgetMax: number | undefined, apiKey: string): Promise<Product[]> {
-  const fields = "sku,name,salePrice,thumbnailImage,url,customerReviewAverage,customerReviewCount,manufacturer,onlineAvailability";
-  const priceFilter = budgetMax ? `&salePrice<=${budgetMax}` : "";
-  const search = `search=${encodeURIComponent(query)}${priceFilter}`;
+  // Request the fields Trine renders, plus regularPrice/image fallbacks.
+  const fields =
+    "sku,name,salePrice,regularPrice,image,largeImage,thumbnailImage,url,addToCartUrl,customerReviewAverage,customerReviewCount,manufacturer,onlineAvailability";
+  // Filters live INSIDE the parentheses and are AND-combined: keyword match,
+  // buyable online, and within budget when one is given.
+  const filters = [`search=${encodeURIComponent(bestBuyKeywords(query))}`, "onlineAvailability=true"];
+  if (budgetMax) filters.push(`salePrice<=${budgetMax}`);
   const params = new URLSearchParams({ format: "json", apiKey, pageSize: "25", show: fields });
-  const res = await fetch(`https://api.bestbuy.com/v1/products(${search})?${params}`);
+  const res = await fetch(`https://api.bestbuy.com/v1/products(${filters.join("&")})?${params}`);
   if (!res.ok) return [];
   const data = await res.json();
   return (data.products ?? []).map(
@@ -228,8 +261,9 @@ async function fetchBestBuy(query: string, budgetMax: number | undefined, apiKey
       id: `bestbuy-${p.sku}`,
       retailer: "Best Buy",
       title: p.name,
-      price: p.salePrice,
-      imageUrl: p.thumbnailImage ?? "",
+      // Best Buy occasionally omits salePrice; fall back to the list price.
+      price: typeof p.salePrice === "number" ? p.salePrice : (p.regularPrice ?? 0),
+      imageUrl: p.image || p.largeImage || p.thumbnailImage || "",
       productUrl: p.url,
       reviewScore: p.customerReviewAverage ? parseFloat(p.customerReviewAverage) : null,
       reviewCount: p.customerReviewCount ?? null,
