@@ -318,10 +318,16 @@ async function scrapeProducts(searchUrl: string, fcKey: string): Promise<Scraped
     headers: { Authorization: `Bearer ${fcKey}`, "Content-Type": "application/json" },
     body: JSON.stringify({
       url: searchUrl,
-      onlyMainContent: true,
-      proxy: "auto", // auto-escalates to anti-bot proxies when a site needs it
-      maxAge: 86_400_000, // accept a ≤1-day-old cached page (faster + no re-bill)
-      timeout: 25_000,
+      // These retailers run heavy JS behind strong anti-bot. Live testing showed
+      // they only yield results with the enhanced proxy, the full DOM (not just
+      // "main content"), and a short render wait. maxAge serves the cached page
+      // on repeat queries (the page scrape is cached; the JSON extraction still
+      // re-runs, so even a cache hit is a few seconds).
+      onlyMainContent: false,
+      proxy: "enhanced", // anti-bot; up to 5 credits/request
+      maxAge: 86_400_000, // accept a ≤1-day-old cached page
+      waitFor: 3500,
+      timeout: 60_000,
       location: { country: "US", languages: ["en-US"] },
       formats: [
         {
