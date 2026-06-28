@@ -15,7 +15,9 @@
 import { searchKeywords } from "../lib/scrapers";
 
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
-const MODEL = "claude-sonnet-4-6";
+// Haiku 4.5 — ranking/selecting from a candidate list is well within its
+// ability, at ~1/3 the cost of Sonnet 4.6 ($1/$5 vs $3/$15 per 1M tokens).
+const MODEL = "claude-haiku-4-5";
 
 // Scraped retailers (Amazon, The RealReal, Nordstrom) are served from the
 // scraped_products cache, which the scrape-warm-background function fills. A
