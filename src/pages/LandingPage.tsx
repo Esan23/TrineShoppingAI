@@ -9,6 +9,7 @@ import SocialProof from "../components/SocialProof";
 import TrustSection from "../components/TrustSection";
 import DemoVideo from "../components/DemoVideo";
 import Pricing from "../components/Pricing";
+import FAQ from "../components/FAQ";
 import FinalCTA from "../components/FinalCTA";
 import Footer from "../components/Footer";
 import SignUpModal from "../components/SignUpModal";
@@ -34,6 +35,7 @@ export default function LandingPage() {
         <TrustSection />
         <DemoVideo />
         <Pricing />
+        <FAQ />
         <FinalCTA />
       </main>
 

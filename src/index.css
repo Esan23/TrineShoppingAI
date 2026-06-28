@@ -73,3 +73,61 @@
     @apply absolute left-4 top-4 z-[2000] -translate-y-24 rounded-lg bg-white px-4 py-2 text-sm font-semibold text-brand-blue shadow-lg transition focus:translate-y-0;
   }
 }
+
+/* Soft Aurora drifting blobs (AuroraBackground). Decorative; the global
+   reduced-motion rule above pauses the drift to a near-static state. */
+.aurora-blob {
+  position: absolute;
+  width: 65%;
+  aspect-ratio: 1 / 1;
+  border-radius: 9999px;
+  filter: blur(64px);
+  opacity: 0.5;
+  mix-blend-mode: screen;
+  will-change: transform;
+}
+.aurora-blob-1 {
+  background: radial-gradient(circle, #4338ca 0%, transparent 70%);
+  top: -25%;
+  left: -10%;
+  animation: aurora-drift-1 19s ease-in-out infinite;
+}
+.aurora-blob-2 {
+  background: radial-gradient(circle, #0891b2 0%, transparent 70%);
+  top: 5%;
+  right: -18%;
+  animation: aurora-drift-2 23s ease-in-out infinite;
+}
+.aurora-blob-3 {
+  background: radial-gradient(circle, #34d399 0%, transparent 70%);
+  bottom: -30%;
+  left: 25%;
+  animation: aurora-drift-3 27s ease-in-out infinite;
+}
+@keyframes aurora-drift-1 {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(8%, 10%, 0);
+  }
+}
+@keyframes aurora-drift-2 {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(-10%, 8%, 0);
+  }
+}
+@keyframes aurora-drift-3 {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(6%, -10%, 0);
+  }
+}

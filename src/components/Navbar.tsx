@@ -31,17 +31,20 @@ export default function Navbar({ theme, onToggleTheme }: NavbarProps) {
   }, [open]);
 
   return (
-    <header
-      className={`fixed inset-x-0 top-0 z-[1000] transition-all duration-300 ease-brand ${
-        scrolled
-          ? "border-b border-slate-200/70 bg-white/80 backdrop-blur-md dark:border-white/10 dark:bg-[#0B1020]/80"
-          : "border-b border-transparent bg-transparent"
-      }`}
-    >
-      <nav
-        aria-label="Primary"
-        className="container-shortlist flex h-[60px] items-center justify-between lg:h-[72px]"
+    <header className="fixed inset-x-0 top-0 z-[1000]">
+      {/* Resizable navbar (21st.dev pattern): full-width & transparent at the
+          top, contracts into a centered, blurred, rounded pill once scrolled. */}
+      <div
+        className={`transition-all duration-300 ease-brand ${
+          scrolled
+            ? "mx-3 mt-2.5 h-14 max-w-4xl rounded-full border border-slate-200/70 bg-white/80 px-5 shadow-lg shadow-ink/5 backdrop-blur-md dark:border-white/10 dark:bg-[#0B1020]/80 sm:mx-auto lg:h-[60px]"
+            : "mx-auto mt-0 h-[60px] max-w-[1200px] border border-transparent px-6 sm:px-8 lg:h-[72px]"
+        }`}
       >
+        <nav
+          aria-label="Primary"
+          className="flex h-full w-full items-center justify-between"
+        >
         <a href="#top" className="flex items-center gap-2.5" aria-label="Trine home">
           <Logo className="h-8 w-8" />
           <span className="font-display text-2xl tracking-tight text-ink dark:text-white">
@@ -86,7 +89,8 @@ export default function Navbar({ theme, onToggleTheme }: NavbarProps) {
             <Bars3Icon className="h-6 w-6" />
           </button>
         </div>
-      </nav>
+        </nav>
+      </div>
 
       {/* Mobile drawer */}
       <AnimatePresence>

@@ -1,4 +1,5 @@
 import SectionReveal from "./ui/SectionReveal";
+import CountUp from "./ui/CountUp";
 import { TESTIMONIALS, AGGREGATE_STATS } from "../lib/content";
 
 function Stars() {
@@ -64,7 +65,13 @@ export default function SocialProof() {
           <div className="grid gap-6 rounded-2xl border border-slate-200 bg-white p-8 dark:border-white/10 dark:bg-white/[0.03] sm:grid-cols-4">
             {AGGREGATE_STATS.map((s) => (
               <div key={s.label} className="text-center">
-                <p className="font-display text-3xl text-gradient">{s.value}</p>
+                <CountUp
+                  to={s.to}
+                  decimals={s.decimals ?? 0}
+                  separator={s.separator ?? ""}
+                  suffix={s.suffix ?? ""}
+                  className="font-display text-3xl text-gradient"
+                />
                 <p className="mt-1 text-sm text-muted">{s.label}</p>
               </div>
             ))}

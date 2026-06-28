@@ -14,6 +14,7 @@ export const NAV_LINKS = [
   { label: "How it works", href: "#solution" },
   { label: "Time saved", href: "#calculator" },
   { label: "Pricing", href: "#pricing" },
+  { label: "FAQ", href: "#faq" },
 ];
 
 // The signature shortlist result shown in the hero animation.
@@ -128,11 +129,21 @@ export const TESTIMONIALS = [
   },
 ];
 
-export const AGGREGATE_STATS = [
-  { value: "12,000+", label: "people deciding faster" },
-  { value: "1.4M", label: "tabs never opened" },
-  { value: "94%", label: "second-guess less" },
-  { value: "4.8★", label: "average rating" },
+// Structured for the animated CountUp in SocialProof. `to` is the numeric
+// target; prefix/suffix/decimals/separator shape the display.
+export interface AggregateStat {
+  to: number;
+  decimals?: number;
+  separator?: string;
+  suffix?: string;
+  label: string;
+}
+
+export const AGGREGATE_STATS: AggregateStat[] = [
+  { to: 12000, separator: ",", suffix: "+", label: "people deciding faster" },
+  { to: 1.4, decimals: 1, suffix: "M", label: "tabs never opened" },
+  { to: 94, suffix: "%", label: "second-guess less" },
+  { to: 4.8, decimals: 1, suffix: "★", label: "average rating" },
 ];
 
 export type PlanFeature = string;
@@ -187,6 +198,35 @@ export const PLANS: Plan[] = [
       "Family spending overview",
     ],
     cta: "Start free trial",
+  },
+];
+
+// Visible FAQ accordion copy. Kept in sync with the FAQPage JSON-LD in
+// index.html so the on-page answers and the structured data match.
+export const FAQS = [
+  {
+    q: "Will I be charged after the free trial?",
+    a: "No. You stay on the free plan automatically — five shortlists a month, no card, no surprise charge. Upgrade only if you want to.",
+  },
+  {
+    q: "Can I cancel anytime?",
+    a: "Yes, in two taps, and there's a 30-day money-back guarantee on paid plans.",
+  },
+  {
+    q: "Is my data private?",
+    a: "Your searches are yours. We never sell them, there are no paid placements in your results, and you can delete your history anytime. Encrypted in transit and at rest.",
+  },
+  {
+    q: "Does it work where I shop?",
+    a: "Bring the thing however you've got it — paste a link, drop a screenshot, or just describe it.",
+  },
+  {
+    q: "How does Trine actually pick?",
+    a: "It reads what you asked for, weighs price, reviews, and fit, and returns the three that best match — each with a plain reason and an honest “not for” note. The order is never for sale.",
+  },
+  {
+    q: "What devices can I use?",
+    a: "Web, iOS, and Android — your shortlists sync across all of them.",
   },
 ];
 

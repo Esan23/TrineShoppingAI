@@ -1,58 +1,14 @@
 import { useMemo, useState } from "react";
+import type { ReactNode } from "react";
 import { ArrowRightIcon } from "@heroicons/react/24/outline";
 import SectionReveal from "./ui/SectionReveal";
+import ElasticSlider from "./ui/ElasticSlider";
+import CountUp from "./ui/CountUp";
 import Button from "./ui/Button";
 
 const SAVINGS_FACTOR = 0.7; // assumption per PRD §6/§10
 
-function Slider({
-  id,
-  label,
-  min,
-  max,
-  step = 1,
-  value,
-  onChange,
-  format,
-}: {
-  id: string;
-  label: string;
-  min: number;
-  max: number;
-  step?: number;
-  value: number;
-  onChange: (v: number) => void;
-  format: (v: number) => string;
-}) {
-  const pct = ((value - min) / (max - min)) * 100;
-  return (
-    <div>
-      <div className="flex items-baseline justify-between">
-        <label htmlFor={id} className="text-sm font-medium text-ink dark:text-slate-200">
-          {label}
-        </label>
-        <span className="font-display text-xl text-gradient">{format(value)}</span>
-      </div>
-      <input
-        id={id}
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
-        aria-valuetext={format(value)}
-        className="mt-3 h-2 w-full cursor-pointer appearance-none rounded-full bg-slate-200 outline-none dark:bg-white/10 [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-brand-blue [&::-webkit-slider-thumb]:shadow [&::-webkit-slider-thumb]:transition [&::-moz-range-thumb]:h-5 [&::-moz-range-thumb]:w-5 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-brand-blue"
-        style={{
-          background: `linear-gradient(to right, #2563EB 0%, #0891B2 ${pct}%, transparent ${pct}%)`,
-          backgroundColor: "rgb(226 232 240)",
-        }}
-      />
-    </div>
-  );
-}
-
-function Stat({ value, label }: { value: string; label: string }) {
+function Stat({ value, label }: { value: ReactNode; label: string }) {
   return (
     <div>
       <p className="font-display text-3xl leading-none sm:text-4xl">{value}</p>
@@ -98,7 +54,7 @@ export default function TimeReclaimedCalculator() {
           <div className="grid overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-xl dark:border-white/10 dark:bg-white/[0.03] lg:grid-cols-2">
             {/* Inputs */}
             <div className="space-y-8 p-8 sm:p-10">
-              <Slider
+              <ElasticSlider
                 id="decisions"
                 label="Buying decisions per week"
                 min={1}
@@ -107,7 +63,7 @@ export default function TimeReclaimedCalculator() {
                 onChange={setDecisions}
                 format={(v) => `${v}`}
               />
-              <Slider
+              <ElasticSlider
                 id="minutes"
                 label="Minutes lost per decision"
                 min={5}
@@ -117,7 +73,7 @@ export default function TimeReclaimedCalculator() {
                 onChange={setMinutes}
                 format={(v) => `${v} min`}
               />
-              <Slider
+              <ElasticSlider
                 id="rate"
                 label="What an hour is worth to you"
                 min={10}
@@ -138,24 +94,37 @@ export default function TimeReclaimedCalculator() {
               <p className="text-sm font-semibold uppercase tracking-wider text-white/80">
                 You could reclaim
               </p>
-              <p
-                className="mt-2 font-display text-6xl leading-none"
-                aria-live="polite"
-              >
-                {result.annualHours}
+              <p className="mt-2 font-display text-6xl leading-none" aria-hidden>
+                <CountUp to={result.annualHours} separator="," duration={0.5} />
                 <span className="text-2xl"> hrs/yr</span>
               </p>
-              <p className="mt-2 text-lg text-white/90">
-                ≈ {result.workingDays} working days back
+              <p className="mt-2 text-lg text-white/90" aria-hidden>
+                ≈ <CountUp to={result.workingDays} duration={0.5} /> working days back
+              </p>
+
+              {/* One calm announcement for screen readers instead of every
+                  intermediate count-up frame. */}
+              <p className="sr-only" aria-live="polite">
+                You could reclaim about {result.annualHours} hours a year — roughly{" "}
+                {result.workingDays} working days.
               </p>
 
               <div className="mt-8 grid grid-cols-2 gap-6">
                 <Stat
-                  value={`${result.weeklyMin} min`}
+                  value={
+                    <CountUp to={result.weeklyMin} suffix=" min" duration={0.5} />
+                  }
                   label="saved every week"
                 />
                 <Stat
-                  value={`$${result.dollars.toLocaleString()}`}
+                  value={
+                    <CountUp
+                      to={result.dollars}
+                      prefix="$"
+                      separator=","
+                      duration={0.5}
+                    />
+                  }
                   label="of your time, per year"
                 />
               </div>

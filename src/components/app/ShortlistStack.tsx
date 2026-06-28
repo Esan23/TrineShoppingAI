@@ -23,12 +23,29 @@ export default function ShortlistStack({ options, chosen, onChoose }: Props) {
             initial={reduce ? { opacity: 0 } : { opacity: 0, y: 22 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: i * 0.12, ease: [0.4, 0, 0.2, 1] }}
-            className={`relative flex flex-col rounded-2xl border bg-white p-5 shadow-sm transition dark:bg-[#11162A] ${
+            onMouseMove={(e) => {
+              const r = e.currentTarget.getBoundingClientRect();
+              e.currentTarget.style.setProperty("--spot-x", `${e.clientX - r.left}px`);
+              e.currentTarget.style.setProperty("--spot-y", `${e.clientY - r.top}px`);
+            }}
+            className={`group relative flex flex-col overflow-hidden rounded-2xl border bg-white p-5 shadow-sm transition dark:bg-[#11162A] ${
               isChosen
                 ? "border-success ring-2 ring-success/40"
                 : "border-slate-200 hover:border-brand-blue/50 hover:shadow-md dark:border-white/10"
             }`}
           >
+            {/* Spotlight glow that follows the pointer (React Bits Spotlight Card
+                pattern). Sits behind the content via negative z so it tints the
+                card surface, not the text. */}
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-0 -z-10 opacity-0 transition-opacity duration-300 group-hover:opacity-100"
+              style={{
+                background:
+                  "radial-gradient(200px circle at var(--spot-x, 50%) var(--spot-y, 50%), rgba(8,145,178,0.16), transparent 72%)",
+              }}
+            />
+
             <div className="mb-3 flex items-center justify-between">
               <span
                 className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold ${

@@ -1,11 +1,13 @@
 import { ArrowRightIcon } from "@heroicons/react/24/outline";
 import SectionReveal from "./ui/SectionReveal";
+import AuroraBackground from "./ui/AuroraBackground";
 import Button from "./ui/Button";
 
 export default function FinalCTA() {
   return (
     <section className="px-6 py-12 sm:px-8 lg:py-20">
       <SectionReveal className="surface-gradient animate-gradient-pan relative mx-auto max-w-6xl overflow-hidden rounded-[2rem] px-6 py-20 text-center text-white shadow-2xl sm:px-10 lg:py-28">
+        <AuroraBackground />
         <div className="absolute inset-0 bg-ink/10" />
 
         <div className="relative">
