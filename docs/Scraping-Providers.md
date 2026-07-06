@@ -1,5 +1,9 @@
 # Scraped Retailers (Amazon · The RealReal · Nordstrom)
 
+> **See also:** [Firecrawl-Scraping-HLD.md](./Firecrawl-Scraping-HLD.md) (architecture & design decisions) ·
+> [Firecrawl-Scraping-Technical.md](./Firecrawl-Scraping-Technical.md) (implementation reference).
+> This file is the provider/operations notes.
+
 These three retailers have **no usable free product-search API**:
 
 | Retailer | Why scraping | Official option (not used) |
