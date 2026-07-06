@@ -10,38 +10,38 @@ These three retailers have **no usable free product-search API**:
 
 Trine pulls them by extracting their **search-results pages** with [Firecrawl](https://www.firecrawl.dev) structured-JSON scraping — one vendor, one key, one schema.
 
-## Architecture: async cache (scrape never blocks a request)
-Live testing showed a scrape takes **8–60s** (even a Firecrawl cache hit is ~8s, because the page caches but the LLM extraction re-runs) — far beyond Netlify's ~10s synchronous limit. So scraping is fully decoupled from the user request:
+## Architecture: scheduled pre-warm (scrape never blocks a request)
+Live testing showed a scrape takes **55–96s** — far beyond both Netlify's ~10s synchronous limit *and* the free-tier (`nf_team_dev`) background-function budget (a `-background` function returns `202` but is killed at the regular limit). So scraping runs **off Netlify entirely**, in a scheduled GitHub Actions job, and only writes the cache. curate just reads it:
 
 ```
-User → /app → curate ─ reads public.scraped_products (cache, <100ms) ─→ Claude ranks → 3 picks
-                  │
-                  └─ on cache MISS → fires scrape-warm-background (returns 202 instantly)
-                                          │
-                                          └─ Firecrawl scrapes 3 sites (8–60s, 15-min budget)
-                                             → writes rows into scraped_products
-                                             → next identical query is cache-warm
+GitHub Actions (daily cron)                     User → /app → curate
+  scripts/prewarm.ts                              reads public.scraped_products
+   → Firecrawl scrapes 2 sites (55–96s each)      (cache, <100ms)
+   → writes rows into scraped_products       ───→ Claude ranks eBay/BestBuy/cache
+                                                  → 3 picks with direct product URLs
 ```
 
 | Piece | File | Role |
 |-------|------|------|
 | Cache table | [`supabase/migrations/0004_scraped_products.sql`](../supabase/migrations/0004_scraped_products.sql) | `public.scraped_products`, public-read RLS, service-role writes |
 | Scrapers | [`netlify/lib/scrapers.ts`](../netlify/lib/scrapers.ts) | `searchKeywords`, `scrapeRetailers` (Firecrawl, enhanced proxy) |
-| Reader | [`netlify/functions/curate.ts`](../netlify/functions/curate.ts) | `readScrapedCache` + `triggerScrapeWarm` on miss |
-| Warmer | [`netlify/functions/scrape-warm-background.ts`](../netlify/functions/scrape-warm-background.ts) | background fn: scrape → upsert cache |
+| Reader | [`netlify/functions/curate.ts`](../netlify/functions/curate.ts) | `readScrapedCache` (reads cache when Supabase is configured) |
+| Pre-warmer | [`scripts/prewarm.ts`](../scripts/prewarm.ts) + [`.github/workflows/prewarm.yml`](../.github/workflows/prewarm.yml) | GitHub Actions cron: scrape common categories → replace cache rows |
 
 The cache feeds the **same candidate pool** as eBay/Best Buy, so Claude ranks all sources together into the final three. The cache is budget-agnostic; curate applies the per-request budget/review filters when reading.
 
+> **Why not a Netlify background function?** That was the original design, but background functions require a paid Netlify plan; on the free `nf_team_dev` tier the 55–96s scrape is killed before it can write. GitHub Actions gives the long-running compute for free. Only pre-warmed categories get scraped results — a brand-new term falls back to the AI tier until it's added to the pre-warm list. (Re-enable on-demand warming by restoring a background function if the site upgrades to a paid Netlify plan.)
+
 ## Configuration
-Set in Netlify (and `.env` for local `netlify dev`):
+The scraper (GitHub Actions) needs these **repo secrets** (Settings → Secrets → Actions):
 
 | Var | Used by | Purpose |
 |-----|---------|---------|
-| `FIRECRAWL_API_KEY` | both fns | Enables scraping. Unset = scraped retailers are simply absent. |
-| `SUPABASE_SERVICE_ROLE_KEY` | background fn | Writes the cache (bypasses RLS). Server-side secret. |
-| `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` | curate | Reads the cache (already set for auth). |
+| `FIRECRAWL_API_KEY` | GitHub Actions | Runs the scrape. |
+| `SUPABASE_URL` | GitHub Actions | Supabase project URL. |
+| `SUPABASE_SERVICE_ROLE_KEY` | GitHub Actions | Writes the cache (bypasses RLS). Server-side secret — never in the browser or Netlify build. |
 
-`curate` also reaches the warmer via Netlify's auto-provided `URL` env var — no config needed.
+curate (Netlify) only needs `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` (already set for auth) to **read** the cache — no Firecrawl key on Netlify.
 
 ## Live test results (2026-06-28)
 Ran the real pipeline (query: *"leather crossbody bag"*) with a live Firecrawl key:
