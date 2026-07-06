@@ -5,8 +5,9 @@
  * returns a shortlist of three, each with a reason it made the cut and an
  * honest "who it's not for". Three tiers, best-available first:
  *
- *   1. "retailers" — real listings from eBay Browse + Best Buy, ranked by Claude
- *      (needs ANTHROPIC_API_KEY plus at least one retailer credential).
+ *   1. "retailers" — real listings from eBay Browse + Best Buy + the scraped
+ *      cache (The RealReal, Nordstrom), ranked by Claude (needs ANTHROPIC_API_KEY
+ *      plus at least one retailer source: a retailer credential or a warm cache).
  *   2. "ai"        — Claude-generated representative picks with search links
  *      (needs ANTHROPIC_API_KEY only).
  *   3. "demo"      — illustrative placeholder (no keys configured).
@@ -19,9 +20,9 @@ const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 // ability, at ~1/3 the cost of Sonnet 4.6 ($1/$5 vs $3/$15 per 1M tokens).
 const MODEL = "claude-haiku-4-5";
 
-// Scraped retailers (Amazon, The RealReal, Nordstrom) are served from the
-// scraped_products cache, which the scrape-warm-background function fills. A
-// fresh cache row must be newer than this to be used.
+// Scraped retailers (The RealReal, Nordstrom) are served from the
+// scraped_products cache, which a scheduled GitHub Actions job fills (see
+// scripts/prewarm.ts). A fresh cache row must be newer than this to be used.
 const SCRAPE_TTL_MS = 24 * 60 * 60 * 1000;
 
 // ── Types ────────────────────────────────────────────────────────────────
@@ -147,15 +148,15 @@ async function fetchCandidates(
   const bestBuyKey = process.env.BESTBUY_API_KEY;
   if (bestBuyKey) jobs.push(fetchBestBuy(query, budgetMax, bestBuyKey));
 
-  // Scraped retailers (Amazon, The RealReal, Nordstrom) come from the cache the
-  // background function fills — never scraped inline. On a cache miss, kick off
-  // a background warm so the next identical query is served instantly.
+  // Scraped retailers (The RealReal, Nordstrom) come from the scraped_products
+  // cache, which a scheduled GitHub Actions job fills (see scripts/prewarm.ts).
+  // curate only READS the cache — it never scrapes — so this just needs Supabase
+  // configured, not any Firecrawl key.
   const supaUrl = process.env.VITE_SUPABASE_URL;
   const supaAnon = process.env.VITE_SUPABASE_ANON_KEY;
-  if (supaUrl && supaAnon && process.env.FIRECRAWL_API_KEY) {
+  if (supaUrl && supaAnon) {
     const cached = await readScrapedCache(query, supaUrl, supaAnon);
     if (cached.length > 0) jobs.push(Promise.resolve(cached));
-    else await triggerScrapeWarm(query);
   }
 
   if (jobs.length === 0) return [];
@@ -263,13 +264,12 @@ async function fetchBestBuy(query: string, budgetMax: number | undefined, apiKey
   );
 }
 
-// ── Scraped-retailer cache (Amazon, The RealReal, Nordstrom) ──────────────
+// ── Scraped-retailer cache (The RealReal, Nordstrom) ──────────────────────
 //
-// Scraping these sites takes 8-60s — far too slow for a synchronous request —
-// so curate never scrapes inline. Instead the scrape-warm-background function
-// fills the public.scraped_products cache, and here we just read it (fast). On
-// a cache miss we fire that background function so the next identical query is
-// served from cache.
+// Scraping these sites takes 55-96s — far too slow for a synchronous request,
+// and beyond the free-tier Netlify function budget — so curate never scrapes
+// inline. A scheduled GitHub Actions job (scripts/prewarm.ts) fills the
+// public.scraped_products cache, and here we just read it (fast).
 
 /** Read fresh cached products for this query from Supabase (PostgREST). */
 async function readScrapedCache(query: string, url: string, anonKey: string): Promise<Product[]> {
@@ -303,22 +303,6 @@ async function readScrapedCache(query: string, url: string, anonKey: string): Pr
     );
   } catch {
     return [];
-  }
-}
-
-/** Fire-and-(briefly)-wait trigger for the background scraper, so the next
- *  identical query is cache-warm. Returns immediately on the 202. */
-async function triggerScrapeWarm(query: string): Promise<void> {
-  const base = process.env.URL || process.env.DEPLOY_PRIME_URL;
-  if (!base) return;
-  try {
-    await fetch(`${base}/.netlify/functions/scrape-warm-background`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query }),
-    });
-  } catch {
-    /* best effort */
   }
 }
 
