@@ -10,10 +10,9 @@
 [functions]
   node_bundler = "esbuild"
 
-# Pre-warm the scraped_products cache daily (08:00 UTC ≈ pre-US-morning) so
-# common shopping queries are always cache-warm for real users.
-[functions."prewarm-scheduled"]
-  schedule = "0 8 * * *"
+# Note: the scraped_products cache is pre-warmed by a GitHub Actions workflow
+# (.github/workflows/prewarm.yml), not a Netlify scheduled/background function —
+# a live scrape (55-96s) exceeds the free-tier Netlify function budget.
 
 # Let the serverless functions handle their own path (before the SPA catch-all)
 [[redirects]]
