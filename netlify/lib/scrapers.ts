@@ -72,7 +72,9 @@ async function scrapeProducts(searchUrl: string, fcKey: string): Promise<RawProd
       proxy: "enhanced", // anti-bot; up to 5 credits/request
       maxAge: 86_400_000, // serve a ≤1-day-old cached page when available
       waitFor: 3500,
-      timeout: 60_000,
+      // Cold scrapes of these heavy anti-bot pages can exceed 60s; the warmer is
+      // a background function (15-min budget), so give Firecrawl room to finish.
+      timeout: 120_000,
       location: { country: "US", languages: ["en-US"] },
       formats: [
         {
@@ -148,15 +150,19 @@ function scrapeNordstrom(query: string, _budgetMax: number | undefined, fcKey: s
   return scrapeProducts(`https://www.nordstrom.com/sr?${params}`, fcKey).then((r) => toRows(r, "Nordstrom"));
 }
 
-/** Scrape all three retailers in parallel and return the combined rows. Runs
- *  in the background function, which has a long (15-min) execution budget. */
+/** Scrape the working retailers in parallel and return the combined rows. Runs
+ *  in the background function, which has a long (15-min) execution budget.
+ *
+ *  Amazon is intentionally excluded: its search page serves an anti-bot wall to
+ *  Firecrawl (0 products), so calling it only wastes ~5 credits and up to 120s
+ *  per run. `scrapeAmazon` is kept below and can be re-added here if a working
+ *  path (e.g. a dedicated Amazon API) is wired up. */
 export async function scrapeRetailers(
   query: string,
   budgetMax: number | undefined,
   fcKey: string
 ): Promise<ScrapedRow[]> {
   const settled = await Promise.allSettled([
-    scrapeAmazon(query, budgetMax, fcKey),
     scrapeRealReal(query, budgetMax, fcKey),
     scrapeNordstrom(query, budgetMax, fcKey),
   ]);

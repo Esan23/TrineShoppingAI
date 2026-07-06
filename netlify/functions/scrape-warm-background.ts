@@ -21,8 +21,11 @@ export const handler = async (event: { body: string | null }) => {
   }
 
   let query = "";
+  let force = false;
   try {
-    query = String(JSON.parse(event.body || "{}").query || "").trim();
+    const parsed = JSON.parse(event.body || "{}");
+    query = String(parsed.query || "").trim();
+    force = parsed.force === true;
   } catch {
     return { statusCode: 200, body: "bad body" };
   }
@@ -36,15 +39,19 @@ export const handler = async (event: { body: string | null }) => {
   };
 
   try {
-    // Skip if another invocation already refreshed this query recently.
-    const since = new Date(Date.now() - SCRAPE_TTL_MS).toISOString();
-    const fresh = await fetch(
-      `${url}/rest/v1/scraped_products?query_key=eq.${encodeURIComponent(key)}&scraped_at=gte.${since}&select=id&limit=1`,
-      { headers }
-    );
-    if (fresh.ok) {
-      const rows = await fresh.json();
-      if (Array.isArray(rows) && rows.length) return { statusCode: 200, body: "already fresh" };
+    // Skip if another invocation already refreshed this query recently — unless
+    // `force` is set (the scheduled pre-warm always refreshes so data can't age
+    // past the daily run regardless of the exact TTL boundary).
+    if (!force) {
+      const since = new Date(Date.now() - SCRAPE_TTL_MS).toISOString();
+      const fresh = await fetch(
+        `${url}/rest/v1/scraped_products?query_key=eq.${encodeURIComponent(key)}&scraped_at=gte.${since}&select=id&limit=1`,
+        { headers }
+      );
+      if (fresh.ok) {
+        const rows = await fresh.json();
+        if (Array.isArray(rows) && rows.length) return { statusCode: 200, body: "already fresh" };
+      }
     }
 
     const scraped = await scrapeRetailers(query, undefined, fcKey);
