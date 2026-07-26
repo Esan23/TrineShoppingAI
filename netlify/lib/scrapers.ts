@@ -19,6 +19,10 @@ export interface ScrapedRow {
   reviewScore: number | null;
   reviewCount: number | null;
   brand: string | null;
+  /** Pre-discount list price when the item is on sale (else null). */
+  originalPrice: number | null;
+  /** Availability: true in stock, false sold out, null unknown. */
+  inStock: boolean | null;
 }
 
 interface RawProduct {
@@ -29,6 +33,8 @@ interface RawProduct {
   rating?: number;
   reviewCount?: number;
   brand?: string;
+  originalPrice?: number;
+  inStock?: boolean;
 }
 
 /**
@@ -82,9 +88,11 @@ async function scrapeProducts(searchUrl: string, fcKey: string): Promise<RawProd
           prompt:
             "Extract the product listings on this shopping search-results page. " +
             "Return up to 20 real, purchasable products. For each: title, numeric " +
-            "price in USD (no symbols), absolute image URL, absolute product URL, " +
-            "average star rating (0-5) if shown, review count if shown, and brand if " +
-            "shown. Skip ads, sponsored placeholders, and items without a price.",
+            "current price in USD (no symbols), absolute image URL, absolute product " +
+            "URL, average star rating (0-5) if shown, review count if shown, brand if " +
+            "shown, the original/list price in USD if the item is marked down (else " +
+            "omit), and inStock (true unless the item is clearly sold out or " +
+            "unavailable). Skip ads, sponsored placeholders, and items without a price.",
           schema: {
             type: "object",
             properties: {
@@ -100,6 +108,8 @@ async function scrapeProducts(searchUrl: string, fcKey: string): Promise<RawProd
                     rating: { type: "number" },
                     reviewCount: { type: "number" },
                     brand: { type: "string" },
+                    originalPrice: { type: "number" },
+                    inStock: { type: "boolean" },
                   },
                   required: ["title", "price", "productUrl"],
                 },
@@ -129,6 +139,10 @@ function toRows(rows: RawProduct[], retailer: Retailer): ScrapedRow[] {
       reviewScore: typeof r.rating === "number" ? r.rating : null,
       reviewCount: typeof r.reviewCount === "number" ? r.reviewCount : null,
       brand: r.brand ?? null,
+      // Only treat it as a discount when the list price is genuinely higher.
+      originalPrice:
+        typeof r.originalPrice === "number" && r.originalPrice > r.price! ? r.originalPrice : null,
+      inStock: typeof r.inStock === "boolean" ? r.inStock : null,
     }));
 }
 

@@ -3,6 +3,8 @@ import {
   ListBulletIcon,
   ShieldCheckIcon,
   ClockIcon,
+  SparklesIcon,
+  QuestionMarkCircleIcon,
 } from "@heroicons/react/24/outline";
 import SectionReveal from "./ui/SectionReveal";
 import { FEATURES } from "../lib/content";
@@ -12,6 +14,8 @@ const ICONS = [
   ListBulletIcon,
   ShieldCheckIcon,
   ClockIcon,
+  SparklesIcon,
+  QuestionMarkCircleIcon,
 ];
 
 /** A small brand-styled mock that visualizes each feature. */
@@ -74,20 +78,63 @@ function FeatureVisual({ index, chip }: { index: number; chip: string }) {
       </div>
     );
   }
-  // Time reclaimed
+  if (index === 3) {
+    // Time reclaimed
+    return (
+      <div className="surface-gradient animate-gradient-pan relative overflow-hidden rounded-2xl p-6 text-white shadow-sm">
+        <p className="text-sm font-medium text-white/90">Time reclaimed</p>
+        <p className="mt-1 font-display text-4xl">{chip}</p>
+        <div className="mt-4 flex gap-1.5">
+          {Array.from({ length: 12 }).map((_, i) => (
+            <span
+              key={i}
+              className="h-8 flex-1 rounded-sm bg-white/25"
+              style={{ height: `${20 + ((i * 37) % 24)}px` }}
+            />
+          ))}
+        </div>
+      </div>
+    );
+  }
+  if (index === 4) {
+    // "It remembers you" — a tuned-to-you memory chip over preference tags.
+    return (
+      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-white/[0.04]">
+        <div className="inline-flex items-center gap-1.5 rounded-full bg-brand-blue/10 px-3 py-1 text-xs font-semibold text-brand-blue dark:bg-brand-cyan/10 dark:text-brand-cyan">
+          <span className="h-2 w-2 rounded-full surface-gradient" />
+          {chip}
+        </div>
+        <div className="mt-4 flex flex-wrap gap-2">
+          {["≤ $150", "likes Sony", "avoids Temu", "≥ 4★", "minimalist"].map((t) => (
+            <span
+              key={t}
+              className="rounded-full border border-slate-200 px-3 py-1 text-xs text-muted dark:border-white/10 dark:text-slate-400"
+            >
+              {t}
+            </span>
+          ))}
+        </div>
+        <p className="mt-3 text-xs text-muted">Set once. Every shortlist after arrives already shaped to you.</p>
+      </div>
+    );
+  }
+  // index === 5 — "One check before big buys" — a single clarifying question.
   return (
-    <div className="surface-gradient animate-gradient-pan relative overflow-hidden rounded-2xl p-6 text-white shadow-sm">
-      <p className="text-sm font-medium text-white/90">Time reclaimed</p>
-      <p className="mt-1 font-display text-4xl">{chip}</p>
-      <div className="mt-4 flex gap-1.5">
-        {Array.from({ length: 12 }).map((_, i) => (
+    <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-white/[0.04]">
+      <div className="rounded-xl bg-slate-50 px-4 py-3 text-sm text-ink dark:bg-white/[0.06] dark:text-white">
+        {chip}
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {["Work", "Gaming", "Portability", "Budget"].map((t) => (
           <span
-            key={i}
-            className="h-8 flex-1 rounded-sm bg-white/25"
-            style={{ height: `${20 + ((i * 37) % 24)}px` }}
-          />
+            key={t}
+            className="rounded-full bg-brand-blue/10 px-3 py-1 text-xs font-medium text-brand-blue dark:bg-brand-cyan/10 dark:text-brand-cyan"
+          >
+            {t}
+          </span>
         ))}
       </div>
+      <p className="mt-3 text-xs text-muted">One question on the big calls — then three confident picks.</p>
     </div>
   );
 }
@@ -101,7 +148,7 @@ export default function FeaturesSection() {
             What you actually get
           </p>
           <h2 className="mt-3 font-display text-3xl leading-tight text-ink dark:text-white sm:text-4xl">
-            Four things, one outcome: you decide and move on.
+            It all adds up to one outcome: you decide and move on.
           </h2>
         </SectionReveal>
 

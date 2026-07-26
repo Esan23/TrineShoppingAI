@@ -74,6 +74,8 @@ async function warm(query: string): Promise<string> {
     review_score: r.reviewScore,
     review_count: r.reviewCount,
     brand: r.brand,
+    original_price: r.originalPrice,
+    in_stock: r.inStock,
   }));
   const res = await fetch(`${url}/rest/v1/scraped_products`, {
     method: "POST",

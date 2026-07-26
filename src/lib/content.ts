@@ -106,6 +106,18 @@ export const FEATURES = [
     body: "A running tally of the hours you'd otherwise have lost to comparison. The value, made visible — week over week, and across the year.",
     chip: "≈ 19 hours back this quarter",
   },
+  {
+    eyebrow: "It remembers you",
+    title: "Tuned to you, so you never re-explain",
+    body: "Set your budget, the brands you love, the ones you won't touch, and how you like to shop — once. Every shortlist after that arrives already shaped to you, and it quietly learns from what you actually pick.",
+    chip: "Tuned to you: premium · avoids fast-fashion",
+  },
+  {
+    eyebrow: "One check before big buys",
+    title: "It confirms before it commits",
+    body: "For a big-ticket decision, Trine asks one sharp question before it picks — so a wrong assumption never turns into three confident, wrong answers. Small, everyday stuff stays instant.",
+    chip: "Quick check: work, gaming, or portability?",
+  },
 ];
 
 export const TESTIMONIALS = [
