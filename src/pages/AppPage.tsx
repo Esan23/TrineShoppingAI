@@ -4,19 +4,21 @@ import { ClockIcon } from "@heroicons/react/24/outline";
 import AppHeader from "../components/app/AppHeader";
 import QueryBar from "../components/app/QueryBar";
 import ShortlistStack from "../components/app/ShortlistStack";
+import ClarifyCard from "../components/app/ClarifyCard";
 import DecisionHistory from "../components/app/DecisionHistory";
 import { curate, saveDecision } from "../lib/curate";
 import { getPreferences } from "../lib/preferences";
 import { useAuth } from "../lib/auth";
 import {
   DEFAULT_PREFERENCES,
+  type ClarifyPrompt,
   type CurateResponse,
   type CurateSource,
   type Preferences,
   type ShortlistOption,
 } from "../lib/types";
 
-type Status = "idle" | "loading" | "done";
+type Status = "idle" | "loading" | "clarify" | "done";
 
 export default function AppPage() {
   const { user } = useAuth();
@@ -25,6 +27,10 @@ export default function AppPage() {
   const [chosen, setChosen] = useState<string | null>(null);
   const [historyVersion, setHistoryVersion] = useState(0);
   const [prefs, setPrefs] = useState<Preferences>(DEFAULT_PREFERENCES);
+  const [clarify, setClarify] = useState<ClarifyPrompt | null>(null);
+  // The original query + budget, carried across a clarify step.
+  const [pendingQuery, setPendingQuery] = useState("");
+  const [pendingBudget, setPendingBudget] = useState<number | undefined>(undefined);
 
   // Load the user's saved preferences to personalize the shortlist.
   useEffect(() => {
@@ -36,10 +42,30 @@ export default function AppPage() {
     setStatus("loading");
     setResult(null);
     setChosen(null);
+    setClarify(null);
+    const budget = budgetMax ?? prefs.budgetMax ?? undefined;
+    setPendingQuery(query);
+    setPendingBudget(budget);
+    const res = await curate({ query, budgetMax: budget, preferences: prefs });
+    // Plan Mode: Trine wants to confirm intent before ranking this one.
+    if (res.clarify) {
+      setClarify(res.clarify);
+      setStatus("clarify");
+      return;
+    }
+    setResult(res);
+    setStatus("done");
+  }
+
+  // After the shopper confirms/refines a high-stakes request, rank directly.
+  async function confirmIntent(refinedQuery: string) {
+    setStatus("loading");
+    setClarify(null);
     const res = await curate({
-      query,
-      budgetMax: budgetMax ?? prefs.budgetMax ?? undefined,
+      query: refinedQuery,
+      budgetMax: pendingBudget,
       preferences: prefs,
+      skipClarify: true,
     });
     setResult(res);
     setStatus("done");
@@ -73,6 +99,15 @@ export default function AppPage() {
           </div>
 
           {status === "loading" && <Skeleton />}
+
+          {status === "clarify" && clarify && (
+            <ClarifyCard
+              clarify={clarify}
+              originalQuery={pendingQuery}
+              loading={false}
+              onConfirm={confirmIntent}
+            />
+          )}
 
           {status === "done" && result && (
             <div className="mt-8">
