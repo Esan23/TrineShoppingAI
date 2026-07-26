@@ -46,9 +46,14 @@ export async function deleteDecision(id: string): Promise<void> {
  */
 export async function recentPicks(limit = 5): Promise<{ name: string; price: string }[]> {
   if (!supabase) return [];
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return [];
   const { data, error } = await supabase
     .from("decisions")
     .select("chosen_name, chosen_price")
+    .eq("user_id", user.id)
     .order("created_at", { ascending: false })
     .limit(limit);
   if (error || !data) return [];

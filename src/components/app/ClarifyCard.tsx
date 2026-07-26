@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { CheckCircleIcon, SparklesIcon } from "@heroicons/react/24/outline";
 import type { ClarifyPrompt } from "../../lib/types";
@@ -6,7 +6,6 @@ import type { ClarifyPrompt } from "../../lib/types";
 interface Props {
   clarify: ClarifyPrompt;
   originalQuery: string;
-  loading: boolean;
   /** Proceed to ranking with the (possibly refined) query. */
   onConfirm: (refinedQuery: string) => void;
 }
@@ -15,9 +14,18 @@ interface Props {
  * Plan-Mode confirmation step (Ch.6). Before ranking a high-stakes request,
  * Trine reflects back what it understood and asks one focused question — so a
  * wrong assumption is corrected before it becomes three confident wrong picks.
+ *
+ * The card unmounts the moment the shopper confirms (AppPage flips to a loading
+ * skeleton), so there is no in-card loading state to manage.
  */
-export default function ClarifyCard({ clarify, originalQuery, loading, onConfirm }: Props) {
+export default function ClarifyCard({ clarify, originalQuery, onConfirm }: Props) {
   const [refined, setRefined] = useState(originalQuery);
+  const headingRef = useRef<HTMLHeadingElement>(null);
+
+  // Move focus to the step so keyboard / screen-reader users notice it appeared.
+  useEffect(() => {
+    headingRef.current?.focus();
+  }, []);
 
   function addSuggestion(s: string) {
     // Append the tapped answer to the request, avoiding obvious duplicates.
@@ -30,12 +38,20 @@ export default function ClarifyCard({ clarify, originalQuery, loading, onConfirm
     <motion.div
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
+      role="group"
+      aria-labelledby="clarify-heading"
+      aria-live="polite"
       className="mt-8 rounded-2xl border border-brand-blue/30 bg-brand-blue/[0.04] p-5 dark:border-brand-cyan/25 dark:bg-white/[0.03]"
     >
-      <div className="flex items-center gap-2 text-sm font-semibold text-brand-blue dark:text-brand-cyan">
+      <h2
+        id="clarify-heading"
+        ref={headingRef}
+        tabIndex={-1}
+        className="flex items-center gap-2 text-sm font-semibold text-brand-blue outline-none dark:text-brand-cyan"
+      >
         <SparklesIcon className="h-4 w-4" />
         One quick check before I pick
-      </div>
+      </h2>
 
       {clarify.understanding && (
         <p className="mt-3 text-sm text-ink dark:text-slate-200">{clarify.understanding}</p>
@@ -71,26 +87,16 @@ export default function ClarifyCard({ clarify, originalQuery, loading, onConfirm
       <div className="mt-4 flex flex-wrap items-center gap-3">
         <button
           type="button"
-          disabled={loading || !refined.trim()}
+          disabled={!refined.trim()}
           onClick={() => onConfirm(refined.trim())}
           className="surface-gradient inline-flex h-11 items-center gap-2 rounded-[10px] bg-[length:200%_200%] px-5 text-sm font-semibold text-white shadow-lg shadow-brand-blue/25 transition hover:bg-right disabled:opacity-60"
         >
-          {loading ? (
-            <>
-              <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
-              Narrowing…
-            </>
-          ) : (
-            <>
-              <CheckCircleIcon className="h-4 w-4" /> Get my 3 picks
-            </>
-          )}
+          <CheckCircleIcon className="h-4 w-4" /> Get my 3 picks
         </button>
         <button
           type="button"
-          disabled={loading}
           onClick={() => onConfirm(originalQuery)}
-          className="text-sm font-medium text-muted underline-offset-2 transition hover:text-brand-blue hover:underline dark:text-slate-400 disabled:opacity-60"
+          className="text-sm font-medium text-muted underline-offset-2 transition hover:text-brand-blue hover:underline dark:text-slate-400"
         >
           Skip — just show picks
         </button>

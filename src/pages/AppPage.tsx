@@ -86,9 +86,11 @@ export default function AppPage() {
   function choose(opt: ShortlistOption) {
     setChosen(opt.name);
     if (result && user) {
-      void saveDecision(result, opt).then(() =>
-        setHistoryVersion((v) => v + 1)
-      );
+      void saveDecision(result, opt).then(() => {
+        setHistoryVersion((v) => v + 1);
+        // Keep taste-calibration memory fresh for the next search.
+        fetchRecentPicks().then(setRecent);
+      });
     }
   }
 
@@ -128,7 +130,6 @@ export default function AppPage() {
             <ClarifyCard
               clarify={clarify}
               originalQuery={pendingQuery}
-              loading={false}
               onConfirm={confirmIntent}
             />
           )}

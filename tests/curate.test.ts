@@ -206,8 +206,33 @@ describe("curate function", () => {
   it("plan mode: skipClarify goes straight to ranking on a high-stakes query", async () => {
     process.env.ANTHROPIC_API_KEY = "sk-test";
     process.env.BESTBUY_API_KEY = "bb-test";
-    // Default mock handles rank_products; if assessClarify ran it would throw
-    // on the unhandled plan_clarification tool — so this also asserts it's skipped.
+    // assessClarify is mocked to WANT clarification. If skipClarify were ignored,
+    // the handler would return that clarify prompt with empty options — so
+    // asserting 3 ranked picks proves the clarify step was actually skipped.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, opts?: { body?: string }) => {
+        url = String(url);
+        if (url.includes("api.bestbuy.com")) {
+          return { ok: true, json: async () => ({ products: [
+            { sku: 1, name: "Laptop A", salePrice: 800, thumbnailImage: "", url: "http://x/1", customerReviewAverage: "4.5", customerReviewCount: 10, manufacturer: "M", onlineAvailability: true },
+            { sku: 2, name: "Laptop B", salePrice: 700, thumbnailImage: "", url: "http://x/2", customerReviewAverage: "4.2", customerReviewCount: 10, manufacturer: "M", onlineAvailability: true },
+            { sku: 3, name: "Laptop C", salePrice: 900, thumbnailImage: "", url: "http://x/3", customerReviewAverage: "4.7", customerReviewCount: 10, manufacturer: "M", onlineAvailability: true },
+          ] }) };
+        }
+        const tool = JSON.parse(opts!.body!).tools[0].name;
+        if (tool === "plan_clarification") {
+          return { ok: true, json: async () => ({ content: [{ type: "tool_use", input: {
+            needsClarification: true, understanding: "u", question: "q?", suggestions: ["a"],
+          } }] }) };
+        }
+        return { ok: true, json: async () => ({ content: [{ type: "tool_use", input: { picks: [
+          { id: "bestbuy-1", rank: 1, match: 95, why: "w", notFor: "n" },
+          { id: "bestbuy-2", rank: 2, match: 88, why: "w", notFor: "n" },
+          { id: "bestbuy-3", rank: 3, match: 90, why: "w", notFor: "n" },
+        ] } }] }) };
+      })
+    );
     const b = await parse(await handler({ httpMethod: "POST", body: JSON.stringify({ query: "a laptop", skipClarify: true }) }));
     expect(b.clarify).toBeFalsy();
     expect(b.source).toBe("retailers");
@@ -254,6 +279,42 @@ describe("curate function", () => {
     // Default mock has no plan_clarification handler; a quiet office chair is
     // low-stakes, so assessClarify must never be invoked.
     const b = await parse(await call());
+    expect(b.clarify).toBeFalsy();
+    expect(b.source).toBe("retailers");
+    expect(b.options).toHaveLength(3);
+  });
+
+  it("plan mode: word-boundary keywords don't false-trigger ('ring light')", async () => {
+    process.env.ANTHROPIC_API_KEY = "sk-test";
+    process.env.BESTBUY_API_KEY = "bb-test";
+    // 'ring' was dropped and matching is word-boundary, so 'ring light' is NOT
+    // high-stakes. assessClarify is mocked to WANT clarification — if the gate
+    // wrongly fired, a clarify prompt would appear; asserting none proves it didn't.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, opts?: { body?: string }) => {
+        url = String(url);
+        if (url.includes("api.bestbuy.com")) {
+          return { ok: true, json: async () => ({ products: [
+            { sku: 1, name: "Ring Light A", salePrice: 30, thumbnailImage: "", url: "http://x/1", customerReviewAverage: "4.5", customerReviewCount: 10, manufacturer: "M", onlineAvailability: true },
+            { sku: 2, name: "Ring Light B", salePrice: 25, thumbnailImage: "", url: "http://x/2", customerReviewAverage: "4.2", customerReviewCount: 10, manufacturer: "M", onlineAvailability: true },
+            { sku: 3, name: "Ring Light C", salePrice: 39, thumbnailImage: "", url: "http://x/3", customerReviewAverage: "4.7", customerReviewCount: 10, manufacturer: "M", onlineAvailability: true },
+          ] }) };
+        }
+        const tool = JSON.parse(opts!.body!).tools[0].name;
+        if (tool === "plan_clarification") {
+          return { ok: true, json: async () => ({ content: [{ type: "tool_use", input: {
+            needsClarification: true, understanding: "u", question: "q?", suggestions: ["a"],
+          } }] }) };
+        }
+        return { ok: true, json: async () => ({ content: [{ type: "tool_use", input: { picks: [
+          { id: "bestbuy-1", rank: 1, match: 95, why: "w", notFor: "n" },
+          { id: "bestbuy-2", rank: 2, match: 88, why: "w", notFor: "n" },
+          { id: "bestbuy-3", rank: 3, match: 90, why: "w", notFor: "n" },
+        ] } }] }) };
+      })
+    );
+    const b = await parse(await handler({ httpMethod: "POST", body: JSON.stringify({ query: "a ring light", budgetMax: 40 }) }));
     expect(b.clarify).toBeFalsy();
     expect(b.source).toBe("retailers");
     expect(b.options).toHaveLength(3);

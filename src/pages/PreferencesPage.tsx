@@ -19,7 +19,7 @@ export default function PreferencesPage() {
   const [brandsText, setBrandsText] = useState("");
   const [blockedText, setBlockedText] = useState("");
   const [categoriesText, setCategoriesText] = useState("");
-  const [status, setStatus] = useState<"idle" | "loading" | "saving" | "saved">("loading");
+  const [status, setStatus] = useState<"idle" | "loading" | "saving" | "saved" | "cleared">("loading");
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -71,7 +71,7 @@ export default function PreferencesPage() {
       )
     )
       return;
-    setStatus("saving");
+    setStatus("loading");
     setError(null);
     await clearAllDecisions();
     const { error } = await savePreferences(DEFAULT_PREFERENCES);
@@ -84,7 +84,7 @@ export default function PreferencesPage() {
     setBrandsText("");
     setBlockedText("");
     setCategoriesText("");
-    setStatus("saved");
+    setStatus("cleared");
     setTimeout(() => setStatus("idle"), 2500);
   }
 
@@ -272,14 +272,21 @@ export default function PreferencesPage() {
               Trine remembers your preferences and past decisions to tune your
               shortlists. You can erase all of it at any time.
             </p>
-            <button
-              type="button"
-              onClick={clearData}
-              disabled={status === "saving" || status === "loading"}
-              className="mt-4 inline-flex items-center gap-2 rounded-[10px] border border-error/40 px-4 py-2.5 text-sm font-medium text-error transition hover:bg-error/10 disabled:opacity-60"
-            >
-              <TrashIcon className="h-4 w-4" /> Clear all my data
-            </button>
+            <div className="mt-4 flex items-center gap-4">
+              <button
+                type="button"
+                onClick={clearData}
+                disabled={status === "saving" || status === "loading"}
+                className="inline-flex items-center gap-2 rounded-[10px] border border-error/40 px-4 py-2.5 text-sm font-medium text-error transition hover:bg-error/10 disabled:opacity-60"
+              >
+                <TrashIcon className="h-4 w-4" /> Clear all my data
+              </button>
+              {status === "cleared" && (
+                <span className="inline-flex items-center gap-1.5 text-sm font-medium text-success">
+                  <CheckCircleIcon className="h-5 w-5" /> Cleared
+                </span>
+              )}
+            </div>
           </div>
         </div>
       </main>

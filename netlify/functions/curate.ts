@@ -34,23 +34,26 @@ const SCRAPE_TTL_MS = 24 * 60 * 60 * 1000;
 // should stay on the fast path, so we gate the check on STAKES, not ambiguity.
 const HIGH_STAKES_USD = 500;
 // High-consideration categories where a wrong pick is expensive to undo, even
-// when no explicit budget was given.
+// when no explicit budget was given. Matched on WORD BOUNDARIES (not raw
+// substring) so "ring light" / "smartwatch" / "stopwatch" don't false-trigger.
+// Bare "ring" is intentionally omitted (too ambiguous); "engagement"/"diamond"
+// carry the jewelry case instead.
 const HIGH_STAKES_KEYWORDS = [
-  "laptop", "macbook", "notebook", "desktop", "pc ", "computer",
+  "laptop", "macbook", "notebook", "desktop", "computer",
   "tv", "television", "monitor", "projector",
   "mattress", "sofa", "couch", "refrigerator", "fridge", "washer", "dryer", "dishwasher", "oven",
   "camera", "lens", "drone",
   "phone", "iphone", "smartphone", "tablet", "ipad",
-  "watch", "ring", "engagement", "diamond",
-  "bike", "e-bike", "ebike", "treadmill", "peloton",
+  "watch", "engagement", "diamond",
+  "bike", "ebike", "treadmill", "peloton",
   "stroller", "car seat", "guitar", "piano",
 ];
 
 /** True when a request is costly enough to be worth a confirm-first step. */
 function isHighStakes(query: string, effectiveBudget?: number): boolean {
   if (effectiveBudget && effectiveBudget >= HIGH_STAKES_USD) return true;
-  const q = ` ${query.toLowerCase()} `;
-  return HIGH_STAKES_KEYWORDS.some((k) => q.includes(k));
+  const q = query.toLowerCase();
+  return HIGH_STAKES_KEYWORDS.some((k) => new RegExp(`\\b${k}\\b`).test(q));
 }
 
 // ── Types ────────────────────────────────────────────────────────────────
