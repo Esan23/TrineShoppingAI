@@ -1,6 +1,23 @@
 import { supabase } from "./supabase";
 import { DEFAULT_PREFERENCES, type Preferences } from "./types";
 
+/**
+ * A short, human-readable summary of a shopper's non-default preferences —
+ * so the app can SHOW that its memory is working (Ch.7 compounding value).
+ * Returns null when nothing but defaults are set.
+ */
+export function summarizePreferences(p: Preferences): string | null {
+  const parts: string[] = [];
+  if (p.qualityTier === "budget") parts.push("budget tier");
+  if (p.qualityTier === "premium") parts.push("premium tier");
+  if (p.budgetMax) parts.push(`≤ $${p.budgetMax}`);
+  if (p.preferredBrands.length) parts.push(`likes ${p.preferredBrands.slice(0, 3).join(", ")}`);
+  if (p.blockedBrands.length) parts.push(`avoids ${p.blockedBrands.slice(0, 3).join(", ")}`);
+  if (p.minReviewScore > 0) parts.push(`≥ ${p.minReviewScore}★`);
+  if (p.categories.length) parts.push(p.categories.slice(0, 3).join(", "));
+  return parts.length ? parts.join(" · ") : null;
+}
+
 /** Load the signed-in user's preferences, or defaults if none/guest. */
 export async function getPreferences(): Promise<Preferences> {
   if (!supabase) return DEFAULT_PREFERENCES;

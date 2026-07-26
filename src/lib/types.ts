@@ -55,6 +55,9 @@ export interface CurateRequest {
   /** Skip the "confirm intent" step and rank immediately (Ch.6 Plan Mode).
    *  Set once the shopper has confirmed/refined a high-stakes request. */
   skipClarify?: boolean;
+  /** A few of the shopper's most recent picks — standing memory (Ch.7) used
+   *  only to calibrate taste on close calls. Capped small on the client. */
+  recentPicks?: { name: string; price: string }[];
 }
 
 /**

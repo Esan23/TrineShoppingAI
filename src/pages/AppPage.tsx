@@ -1,13 +1,15 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import { ClockIcon } from "@heroicons/react/24/outline";
+import { ClockIcon, SparklesIcon } from "@heroicons/react/24/outline";
 import AppHeader from "../components/app/AppHeader";
 import QueryBar from "../components/app/QueryBar";
 import ShortlistStack from "../components/app/ShortlistStack";
 import ClarifyCard from "../components/app/ClarifyCard";
 import DecisionHistory from "../components/app/DecisionHistory";
 import { curate, saveDecision } from "../lib/curate";
-import { getPreferences } from "../lib/preferences";
+import { getPreferences, summarizePreferences } from "../lib/preferences";
+import { recentPicks as fetchRecentPicks } from "../lib/decisions";
 import { useAuth } from "../lib/auth";
 import {
   DEFAULT_PREFERENCES,
@@ -28,14 +30,21 @@ export default function AppPage() {
   const [historyVersion, setHistoryVersion] = useState(0);
   const [prefs, setPrefs] = useState<Preferences>(DEFAULT_PREFERENCES);
   const [clarify, setClarify] = useState<ClarifyPrompt | null>(null);
+  // The shopper's recent picks — standing memory (Ch.7) sent to the engine.
+  const [recent, setRecent] = useState<{ name: string; price: string }[]>([]);
   // The original query + budget, carried across a clarify step.
   const [pendingQuery, setPendingQuery] = useState("");
   const [pendingBudget, setPendingBudget] = useState<number | undefined>(undefined);
 
-  // Load the user's saved preferences to personalize the shortlist.
+  // Load the user's saved preferences + recent picks to personalize the shortlist.
   useEffect(() => {
-    if (user) getPreferences().then(setPrefs);
-    else setPrefs(DEFAULT_PREFERENCES);
+    if (user) {
+      getPreferences().then(setPrefs);
+      fetchRecentPicks().then(setRecent);
+    } else {
+      setPrefs(DEFAULT_PREFERENCES);
+      setRecent([]);
+    }
   }, [user]);
 
   async function run(query: string, budgetMax?: number) {
@@ -46,7 +55,7 @@ export default function AppPage() {
     const budget = budgetMax ?? prefs.budgetMax ?? undefined;
     setPendingQuery(query);
     setPendingBudget(budget);
-    const res = await curate({ query, budgetMax: budget, preferences: prefs });
+    const res = await curate({ query, budgetMax: budget, preferences: prefs, recentPicks: recent });
     // Plan Mode: Trine wants to confirm intent before ranking this one.
     if (res.clarify) {
       setClarify(res.clarify);
@@ -65,11 +74,14 @@ export default function AppPage() {
       query: refinedQuery,
       budgetMax: pendingBudget,
       preferences: prefs,
+      recentPicks: recent,
       skipClarify: true,
     });
     setResult(res);
     setStatus("done");
   }
+
+  const memoryLine = user ? summarizePreferences(prefs) : null;
 
   function choose(opt: ShortlistOption) {
     setChosen(opt.name);
@@ -97,6 +109,18 @@ export default function AppPage() {
           <div className="mt-6">
             <QueryBar onSubmit={run} loading={status === "loading"} />
           </div>
+
+          {memoryLine && (
+            <p className="mt-3 flex flex-wrap items-center gap-x-1.5 text-xs text-muted dark:text-slate-400">
+              <SparklesIcon className="h-3.5 w-3.5 text-brand-blue dark:text-brand-cyan" />
+              <span>
+                Tuned to you: <span className="text-ink dark:text-slate-200">{memoryLine}</span>
+              </span>
+              <Link to="/preferences" className="font-medium text-brand-blue hover:underline dark:text-brand-cyan">
+                Edit
+              </Link>
+            </p>
+          )}
 
           {status === "loading" && <Skeleton />}
 

@@ -105,6 +105,24 @@ function prefsLine(p?: Preferences): string {
   return line + notes;
 }
 
+// A few of the shopper's most recent picks — standing MEMORY (Ch.7), used only
+// to calibrate taste when a choice is otherwise a toss-up. Deliberately terse
+// so it informs, rather than pollutes, the ranking context.
+interface RecentPick {
+  name: string;
+  price: string;
+}
+
+/** A plain-language line describing the shopper's recent picks (or ""). */
+function historyLine(recent?: RecentPick[]): string {
+  if (!recent?.length) return "";
+  const items = recent
+    .slice(0, 5)
+    .map((r) => `${r.name}${r.price ? ` (${r.price})` : ""}`)
+    .join("; ");
+  return `\n- For taste calibration only — these past picks may be unrelated to this request: the shopper recently chose ${items}. Lean toward that style and price level ONLY when the choice is otherwise a toss-up.`;
+}
+
 const json = (status: number, body: unknown) => ({
   statusCode: status,
   headers: {
@@ -130,6 +148,7 @@ export const handler = async (event: {
   let budgetMax: number | undefined;
   let preferences: Preferences | undefined;
   let skipClarify = false;
+  let recentPicks: RecentPick[] | undefined;
   try {
     const parsed = JSON.parse(event.body || "{}");
     query = String(parsed.query || "").trim();
@@ -138,6 +157,16 @@ export const handler = async (event: {
       ? (parsed.preferences as Preferences)
       : undefined;
     skipClarify = parsed.skipClarify === true;
+    recentPicks = Array.isArray(parsed.recentPicks)
+      ? parsed.recentPicks
+          .filter((r: unknown): r is { name: unknown; price?: unknown } =>
+            !!r && typeof (r as { name?: unknown }).name === "string")
+          .map((r: { name: unknown; price?: unknown }) => ({
+            name: String(r.name),
+            price: r.price != null ? String(r.price) : "",
+          }))
+          .slice(0, 5)
+      : undefined;
   } catch {
     return json(400, { error: "Invalid JSON body" });
   }
@@ -170,6 +199,7 @@ export const handler = async (event: {
       if (clarify) {
         return json(200, {
           query,
+          queryKey,
           options: [],
           source: "ai" as const,
           demoMode: false,
@@ -182,11 +212,11 @@ export const handler = async (event: {
     // Tier 1: try to gather real retailer listings.
     const products = await fetchCandidates(query, budgetMax, preferences);
     if (products.length > 0) {
-      const ranked = await rankRealProducts(apiKey, query, products, budgetMax, preferences);
+      const ranked = await rankRealProducts(apiKey, query, products, budgetMax, preferences, recentPicks);
       if (ranked.length > 0) return reply(ranked, "retailers");
     }
     // Tier 2: no retailer data — let Claude suggest representative picks.
-    return reply(await generateShortlist(apiKey, query, budgetMax, preferences), "ai");
+    return reply(await generateShortlist(apiKey, query, budgetMax, preferences, recentPicks), "ai");
   } catch (err) {
     console.error("curate error:", err);
     return reply(demoShortlist(query, budgetMax), "demo");
@@ -381,14 +411,15 @@ async function rankRealProducts(
   query: string,
   products: Product[],
   budgetMax?: number,
-  preferences?: Preferences
+  preferences?: Preferences,
+  recentPicks?: RecentPick[]
 ): Promise<ShortlistOption[]> {
   const budgetLine = budgetMax ? `\n- Hard budget ceiling: $${budgetMax}.` : "";
   const system = `You are Trine, a calm, trustworthy shopping-decision assistant. From the candidate products below, pick exactly THREE — like a smart friend who already did the research.
 
 Rules:
 - Rank 1 = the safest low-regret pick for most people; then a value pick and a premium pick.
-- Judge on price-for-value, review score and volume, brand, and fit to the request.${budgetLine}${prefsLine(preferences)}
+- Judge on price-for-value, review score and volume, brand, and fit to the request.${budgetLine}${prefsLine(preferences)}${historyLine(recentPicks)}
 - Each pick needs a one-sentence "why" and an honest "who it's NOT for".
 - "match" is a 0–100 confidence score; keep them distinct and honest.
 - Voice: plain, economical, reassuring. No hype, no exclamation points.
@@ -472,7 +503,8 @@ async function generateShortlist(
   apiKey: string,
   query: string,
   budgetMax?: number,
-  preferences?: Preferences
+  preferences?: Preferences,
+  recentPicks?: RecentPick[]
 ): Promise<ShortlistOption[]> {
   const budgetLine = budgetMax ? `\n- Hard budget ceiling: $${budgetMax}.` : "";
   const system = `You are Trine, a calm, trustworthy shopping-decision assistant. A busy person describes what they need in plain words and you hand back a confident shortlist of exactly THREE options.
@@ -481,7 +513,7 @@ Rules:
 - Recommend real, well-known product types/models a shopper could actually find today.
 - Rank 1 = the safest low-regret pick for most people; then a value option and a premium option.
 - Each option needs a one-sentence "why" and an honest "who it's NOT for".
-- "price" is a realistic estimate (e.g. "~$70"); stay at or under any stated budget.${budgetLine}${prefsLine(preferences)}
+- "price" is a realistic estimate (e.g. "~$70"); stay at or under any stated budget.${budgetLine}${prefsLine(preferences)}${historyLine(recentPicks)}
 - "name" must be a specific, real product: include the brand and model (e.g. "Steelcase Series 1", not "ergonomic office chair").
 - "url" must be a Google Shopping search for THAT EXACT product, built from its name: https://www.google.com/search?tbm=shop&q=<url-encoded "name"> — so each of the three links lands on a different, specific item, never the same generic search.
 - "match" is a 0–100 confidence score; keep them distinct and honest.

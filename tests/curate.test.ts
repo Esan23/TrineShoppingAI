@@ -259,6 +259,39 @@ describe("curate function", () => {
     expect(b.options).toHaveLength(3);
   });
 
+  it("ch7 memory: recent picks are injected into the ranking prompt", async () => {
+    process.env.ANTHROPIC_API_KEY = "sk-test";
+    process.env.BESTBUY_API_KEY = "bb-test";
+    let systemSeen = "";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, opts?: { body?: string }) => {
+        url = String(url);
+        if (url.includes("api.bestbuy.com")) {
+          return { ok: true, json: async () => ({ products: [
+            { sku: 1, name: "Chair A", salePrice: 199, thumbnailImage: "", url: "http://x/1", customerReviewAverage: "4.5", customerReviewCount: 10, manufacturer: "M", onlineAvailability: true },
+            { sku: 2, name: "Chair B", salePrice: 149, thumbnailImage: "", url: "http://x/2", customerReviewAverage: "4.2", customerReviewCount: 10, manufacturer: "M", onlineAvailability: true },
+            { sku: 3, name: "Chair C", salePrice: 259, thumbnailImage: "", url: "http://x/3", customerReviewAverage: "4.7", customerReviewCount: 10, manufacturer: "M", onlineAvailability: true },
+          ] }) };
+        }
+        // anthropic — capture the system prompt the ranker was given.
+        systemSeen = JSON.parse(opts!.body!).system;
+        return { ok: true, json: async () => ({ content: [{ type: "tool_use", input: { picks: [
+          { id: "bestbuy-1", rank: 1, match: 95, why: "w", notFor: "n" },
+          { id: "bestbuy-2", rank: 2, match: 88, why: "w", notFor: "n" },
+          { id: "bestbuy-3", rank: 3, match: 90, why: "w", notFor: "n" },
+        ] } }] }) };
+      })
+    );
+    await handler({ httpMethod: "POST", body: JSON.stringify({
+      query: "office chair",
+      budgetMax: 300,
+      recentPicks: [{ name: "Herman Miller Aeron", price: "$1200" }],
+    }) });
+    expect(systemSeen).toContain("Herman Miller Aeron");
+    expect(systemSeen).toMatch(/taste calibration/i);
+  });
+
   it("retailers tier falls back to demo if Anthropic call fails", async () => {
     process.env.ANTHROPIC_API_KEY = "sk-test";
     process.env.BESTBUY_API_KEY = "bb-test";
