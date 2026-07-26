@@ -25,6 +25,34 @@ const MODEL = "claude-haiku-4-5";
 // scripts/prewarm.ts). A fresh cache row must be newer than this to be used.
 const SCRAPE_TTL_MS = 24 * 60 * 60 * 1000;
 
+// ── Plan Mode: confirm intent before ranking (Cognition Economy Ch.6) ──────
+//
+// A wrong ASSUMPTION (budget, use-case, form factor) compounds into three
+// confident-but-wrong picks. To catch that before it happens, Trine confirms
+// intent first — but only when the stakes justify the extra step. The chapter's
+// own matrix (complexity × irreversibility) says a cheap, reversible pick
+// should stay on the fast path, so we gate the check on STAKES, not ambiguity.
+const HIGH_STAKES_USD = 500;
+// High-consideration categories where a wrong pick is expensive to undo, even
+// when no explicit budget was given.
+const HIGH_STAKES_KEYWORDS = [
+  "laptop", "macbook", "notebook", "desktop", "pc ", "computer",
+  "tv", "television", "monitor", "projector",
+  "mattress", "sofa", "couch", "refrigerator", "fridge", "washer", "dryer", "dishwasher", "oven",
+  "camera", "lens", "drone",
+  "phone", "iphone", "smartphone", "tablet", "ipad",
+  "watch", "ring", "engagement", "diamond",
+  "bike", "e-bike", "ebike", "treadmill", "peloton",
+  "stroller", "car seat", "guitar", "piano",
+];
+
+/** True when a request is costly enough to be worth a confirm-first step. */
+function isHighStakes(query: string, effectiveBudget?: number): boolean {
+  if (effectiveBudget && effectiveBudget >= HIGH_STAKES_USD) return true;
+  const q = ` ${query.toLowerCase()} `;
+  return HIGH_STAKES_KEYWORDS.some((k) => q.includes(k));
+}
+
 // ── Types ────────────────────────────────────────────────────────────────
 
 interface Product {
@@ -101,6 +129,7 @@ export const handler = async (event: {
   let query = "";
   let budgetMax: number | undefined;
   let preferences: Preferences | undefined;
+  let skipClarify = false;
   try {
     const parsed = JSON.parse(event.body || "{}");
     query = String(parsed.query || "").trim();
@@ -108,6 +137,7 @@ export const handler = async (event: {
     preferences = parsed.preferences && typeof parsed.preferences === "object"
       ? (parsed.preferences as Preferences)
       : undefined;
+    skipClarify = parsed.skipClarify === true;
   } catch {
     return json(400, { error: "Invalid JSON body" });
   }
@@ -131,6 +161,24 @@ export const handler = async (event: {
   if (!apiKey) return reply(demoShortlist(query, budgetMax), "demo");
 
   try {
+    // Plan Mode: on high-stakes requests, confirm intent before ranking — but
+    // only if Claude judges a real gap remains. If it's already specific, or
+    // the shopper already confirmed (skipClarify), fall straight through.
+    const effectiveBudget = budgetMax ?? preferences?.budgetMax ?? undefined;
+    if (!skipClarify && isHighStakes(query, effectiveBudget)) {
+      const clarify = await assessClarify(apiKey, query, effectiveBudget, preferences);
+      if (clarify) {
+        return json(200, {
+          query,
+          options: [],
+          source: "ai" as const,
+          demoMode: false,
+          elapsedMs: Date.now() - started,
+          clarify,
+        });
+      }
+    }
+
     // Tier 1: try to gather real retailer listings.
     const products = await fetchCandidates(query, budgetMax, preferences);
     if (products.length > 0) {
@@ -486,6 +534,72 @@ Rules:
         ? `https://www.google.com/search?tbm=shop&q=${encodeURIComponent(o.name)}`
         : o.url,
     }));
+}
+
+// ── Claude: confirm intent on high-stakes requests (Plan Mode) ────────────
+
+interface ClarifyPrompt {
+  understanding: string;
+  question: string;
+  suggestions: string[];
+}
+
+/**
+ * For a high-stakes request, ask Claude whether it has enough to rank well.
+ * Returns a confirmation prompt when a real gap remains, or null to proceed.
+ * Claude is the judge: a request that's already specific returns null, so the
+ * shopper is never asked a needless question.
+ */
+async function assessClarify(
+  apiKey: string,
+  query: string,
+  budgetMax?: number,
+  preferences?: Preferences
+): Promise<ClarifyPrompt | null> {
+  const budgetLine = budgetMax ? `\n- Known budget: about $${budgetMax}.` : "\n- No budget stated.";
+  const system = `You are Trine, a calm shopping-decision assistant. This is a HIGH-STAKES purchase (expensive or hard to undo), so before recommending anything you make sure you understand the request — like a good salesperson who asks one smart question instead of guessing.
+
+Decide whether you can already give three well-targeted picks, or whether ONE missing detail would materially change them (e.g. budget, primary use, size/fit, must-have feature).${budgetLine}${prefsLine(preferences)}
+
+- If the request is already specific enough to rank well, set needsClarification=false and leave the other fields empty.
+- If a real gap remains, set needsClarification=true and:
+  - "understanding": one sentence reflecting back what you DID understand.
+  - "question": the single most useful question to close the biggest gap.
+  - "suggestions": 2–4 short tappable answers to that question (e.g. price bands or use-cases).
+- Ask at most one question. Never ask about something the shopper already stated. Voice: plain, warm, economical.`;
+
+  try {
+    const data = await callClaude(apiKey, {
+      system,
+      tool: {
+        name: "plan_clarification",
+        description: "Decide whether to confirm intent before ranking, and if so, what to ask.",
+        input_schema: {
+          type: "object",
+          properties: {
+            needsClarification: { type: "boolean" },
+            understanding: { type: "string" },
+            question: { type: "string" },
+            suggestions: { type: "array", items: { type: "string" }, maxItems: 4 },
+          },
+          required: ["needsClarification"],
+        },
+      },
+      userText: `The shopper asked for: "${query}"`,
+    });
+
+    if (!data?.needsClarification || !data.question) return null;
+    return {
+      understanding: String(data.understanding ?? ""),
+      question: String(data.question),
+      suggestions: Array.isArray(data.suggestions)
+        ? data.suggestions.map((s: unknown) => String(s)).slice(0, 4)
+        : [],
+    };
+  } catch {
+    // If the assessment fails, don't block the shopper — fall through to rank.
+    return null;
+  }
 }
 
 // ── Anthropic call (shared) ──────────────────────────────────────────────

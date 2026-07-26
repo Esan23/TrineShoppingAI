@@ -174,6 +174,91 @@ describe("curate function", () => {
     expect(b.options[0].name).toBe("Vintage Designer Bag");
   });
 
+  it("plan mode: high-stakes query returns a clarify prompt before ranking", async () => {
+    process.env.ANTHROPIC_API_KEY = "sk-test";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, opts?: { body?: string }) => {
+        url = String(url);
+        if (url.includes("api.anthropic.com")) {
+          const tool = JSON.parse(opts!.body!).tools[0].name;
+          if (tool === "plan_clarification") {
+            return { ok: true, json: async () => ({ content: [{ type: "tool_use", input: {
+              needsClarification: true,
+              understanding: "You're after a laptop.",
+              question: "What will you mainly use it for?",
+              suggestions: ["Everyday / web", "Gaming", "Video editing"],
+            } }] }) };
+          }
+          throw new Error("must not rank before the clarify step");
+        }
+        throw new Error("unexpected url " + url);
+      })
+    );
+    const b = await parse(await handler({ httpMethod: "POST", body: JSON.stringify({ query: "a laptop" }) }));
+    expect(b.status).toBe(200);
+    expect(b.clarify).toBeTruthy();
+    expect(b.clarify.question).toMatch(/use/i);
+    expect(b.clarify.suggestions).toHaveLength(3);
+    expect(b.options).toHaveLength(0);
+  });
+
+  it("plan mode: skipClarify goes straight to ranking on a high-stakes query", async () => {
+    process.env.ANTHROPIC_API_KEY = "sk-test";
+    process.env.BESTBUY_API_KEY = "bb-test";
+    // Default mock handles rank_products; if assessClarify ran it would throw
+    // on the unhandled plan_clarification tool — so this also asserts it's skipped.
+    const b = await parse(await handler({ httpMethod: "POST", body: JSON.stringify({ query: "a laptop", skipClarify: true }) }));
+    expect(b.clarify).toBeFalsy();
+    expect(b.source).toBe("retailers");
+    expect(b.options).toHaveLength(3);
+  });
+
+  it("plan mode: high-stakes but already specific → proceeds to rank", async () => {
+    process.env.ANTHROPIC_API_KEY = "sk-test";
+    process.env.BESTBUY_API_KEY = "bb-test";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, opts?: { body?: string }) => {
+        url = String(url);
+        if (url.includes("api.bestbuy.com")) {
+          return { ok: true, json: async () => ({ products: [
+            { sku: 1, name: "Laptop A", salePrice: 800, thumbnailImage: "", url: "http://x/1", customerReviewAverage: "4.5", customerReviewCount: 10, manufacturer: "M", onlineAvailability: true },
+            { sku: 2, name: "Laptop B", salePrice: 700, thumbnailImage: "", url: "http://x/2", customerReviewAverage: "4.2", customerReviewCount: 10, manufacturer: "M", onlineAvailability: true },
+            { sku: 3, name: "Laptop C", salePrice: 900, thumbnailImage: "", url: "http://x/3", customerReviewAverage: "4.7", customerReviewCount: 10, manufacturer: "M", onlineAvailability: true },
+          ] }) };
+        }
+        if (url.includes("api.anthropic.com")) {
+          const tool = JSON.parse(opts!.body!).tools[0].name;
+          if (tool === "plan_clarification") {
+            return { ok: true, json: async () => ({ content: [{ type: "tool_use", input: { needsClarification: false } }] }) };
+          }
+          return { ok: true, json: async () => ({ content: [{ type: "tool_use", input: { picks: [
+            { id: "bestbuy-1", rank: 1, match: 95, why: "w", notFor: "n" },
+            { id: "bestbuy-2", rank: 2, match: 88, why: "w", notFor: "n" },
+            { id: "bestbuy-3", rank: 3, match: 90, why: "w", notFor: "n" },
+          ] } }] }) };
+        }
+        throw new Error("unexpected url " + url);
+      })
+    );
+    const b = await parse(await handler({ httpMethod: "POST", body: JSON.stringify({ query: "a 15-inch laptop for coding under $900", budgetMax: 900 }) }));
+    expect(b.clarify).toBeFalsy();
+    expect(b.source).toBe("retailers");
+    expect(b.options).toHaveLength(3);
+  });
+
+  it("plan mode: cheap query stays on the fast path (no clarify call)", async () => {
+    process.env.ANTHROPIC_API_KEY = "sk-test";
+    process.env.BESTBUY_API_KEY = "bb-test";
+    // Default mock has no plan_clarification handler; a quiet office chair is
+    // low-stakes, so assessClarify must never be invoked.
+    const b = await parse(await call());
+    expect(b.clarify).toBeFalsy();
+    expect(b.source).toBe("retailers");
+    expect(b.options).toHaveLength(3);
+  });
+
   it("retailers tier falls back to demo if Anthropic call fails", async () => {
     process.env.ANTHROPIC_API_KEY = "sk-test";
     process.env.BESTBUY_API_KEY = "bb-test";
