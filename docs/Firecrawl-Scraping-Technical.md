@@ -1,10 +1,14 @@
 # Firecrawl Scraping Subsystem — Technical Documentation
 
 > **Project:** Trine Shopping AI · **Audience:** developers maintaining or extending the scraper
-> **Last updated:** 2026-07-06 · **Companion:** [Firecrawl-Scraping-HLD.md](./Firecrawl-Scraping-HLD.md)
+> **Last updated:** 2026-07-26 · **Companion:** [Firecrawl-Scraping-HLD.md](./Firecrawl-Scraping-HLD.md)
 
 This is the implementation reference: files, functions, request/response shapes, configuration,
 operations, and troubleshooting. For the *why* and the architecture, read the HLD first.
+
+> **v2 (2026-07-26):** the extraction now also captures **discount** (`originalPrice`) and
+> **availability** (`inStock`) per product. See [§10](#10-v2-signals-discount--availability) for the
+> full delta; the sections below already reflect v2.
 
 ---
 
@@ -17,6 +21,7 @@ operations, and troubleshooting. For the *why* and the architecture, read the HL
 | `.github/workflows/prewarm.yml` | Cron schedule + manual dispatch + secrets injection for `prewarm.ts`. |
 | `netlify/functions/curate.ts` | Decision engine. `readScrapedCache()` reads the cache; the handler ranks the combined pool with Claude. |
 | `supabase/migrations/0004_scraped_products.sql` | The `public.scraped_products` cache table, indexes, and RLS. |
+| `supabase/migrations/0006_scraped_signals.sql` | **v2:** adds `original_price` + `in_stock` columns to the cache table. |
 | `tests/curate.test.ts` | Includes a test that mocks the cache read and asserts the retailers tier. |
 
 > **Note:** an earlier design used a Netlify background function `netlify/functions/scrape-warm-background.ts`.
@@ -69,7 +74,8 @@ Authorization: Bearer <FIRECRAWL_API_KEY>
   "location": { "country": "US", "languages": ["en-US"] },
   "formats": [{
     "type": "json",
-    "prompt": "Extract the product listings … up to 20 real, purchasable products …",
+    "prompt": "Extract the product listings … up to 20 real, purchasable products … include the
+               original/list price if marked down, and inStock (true unless clearly sold out) …",
     "schema": {
       "type": "object",
       "properties": { "products": { "type": "array", "items": {
@@ -77,7 +83,9 @@ Authorization: Bearer <FIRECRAWL_API_KEY>
         "properties": {
           "title": {"type":"string"}, "price": {"type":"number"},
           "imageUrl": {"type":"string"}, "productUrl": {"type":"string"},
-          "rating": {"type":"number"}, "reviewCount": {"type":"number"}, "brand": {"type":"string"}
+          "rating": {"type":"number"}, "reviewCount": {"type":"number"}, "brand": {"type":"string"},
+          "originalPrice": {"type":"number"},   // v2: pre-discount list price
+          "inStock": {"type":"boolean"}          // v2: availability
         },
         "required": ["title", "price", "productUrl"]
       }}},
@@ -104,7 +112,10 @@ Runs the **active** adapters (RealReal + Nordstrom) in parallel via `Promise.all
 the fulfilled results. Amazon is intentionally excluded (see HLD §7); re-add it to the array to re-enable.
 
 `toRows()` keeps only rows with a `title`, `productUrl`, and numeric `price`, and normalizes optional
-`rating`/`reviewCount`/`brand` to `null` when absent.
+`rating`/`reviewCount`/`brand` to `null` when absent. **v2:** it also carries `originalPrice` and
+`inStock` — but `originalPrice` is kept **only when it is strictly greater than `price`** (a `> price`
+guard), so full-price rows that the model returns as `0` or an equal value normalize to `null` rather
+than a phantom "discount."
 
 ---
 
@@ -121,7 +132,8 @@ duplicated.
 2. `scraped = await scrapeRetailers(query, undefined, fcKey)`; if empty, **skip the write** (keep old rows).
 3. `DELETE /rest/v1/scraped_products?query_key=eq.<key>` (service-role headers).
 4. `POST /rest/v1/scraped_products` with the mapped payload (`query_key`, `retailer`, `title`, `price`,
-   `image_url`, `product_url`, `review_score`, `review_count`, `brand`).
+   `image_url`, `product_url`, `review_score`, `review_count`, `brand`, and **v2:** `original_price`,
+   `in_stock`).
 5. Log a per-category summary (`cached N ({retailer:count})`).
 
 **Concurrency:** categories are warmed in batches of 2 to avoid hammering Firecrawl.
@@ -189,10 +201,12 @@ Headers: apikey / Authorization: Bearer <anon key>
 ```
 
 Rows map into the shared `Product` shape (`id: cache-<uuid>`, `retailer`, `title`, `price`,
-`imageUrl`, `productUrl`, `reviewScore`, `reviewCount`, `brand`). The combined pool (eBay + Best Buy +
-cache) is then filtered (`productUrl` + `title` present, within `budgetMax`, above `minReviewScore`),
-de-duplicated by title, and handed to Claude (`claude-haiku-4-5`) for ranking. Result tier is
-`"retailers"` when any candidate survives.
+`imageUrl`, `productUrl`, `reviewScore`, `reviewCount`, `brand`, and **v2:** `originalPrice`,
+`inStock`). The combined pool (eBay + Best Buy + cache) is then filtered (`productUrl` + `title`
+present, **not `inStock === false`**, within `budgetMax`, above `minReviewScore`, and not a
+blocked brand), de-duplicated by title, and handed to Claude (`claude-haiku-4-5`) for ranking.
+**v2:** each candidate carries `originalPrice`, and the ranking prompt permits noting the saving in
+the pick's `why` (e.g. "down from $X"). Result tier is `"retailers"` when any candidate survives.
 
 > **Historical bug (fixed):** the read used to be gated on `process.env.FIRECRAWL_API_KEY`. Because that
 > key isn't on Netlify (and isn't needed there), the read was skipped and every query fell back to the
@@ -273,3 +287,41 @@ curl -s --max-time 150 -X POST https://api.firecrawl.dev/v2/scrape \
   `markdown` + your own selectors is faster/cheaper but brittle (see HLD §11).
 - **Re-enable Amazon:** add `scrapeAmazon` back to `scrapeRetailers` **only** with a working
   path (dedicated API), else it just burns credits.
+
+---
+
+## 10. v2 signals: discount + availability
+
+**Shipped 2026-07-26.** The Firecrawl extraction was deepened to pull two additional signals per
+product, so Trine can prefer in-stock items, drop sold-out ones, and surface real savings — all in
+service of the ICP's core need: a *confident* decision.
+
+### What changed
+
+| Layer | Change |
+|-------|--------|
+| **Schema** (`scrapers.ts`) | Added `originalPrice` (number) and `inStock` (boolean) to the JSON extraction schema + prompt. |
+| **Normalize** (`toRows`) | `originalPrice` kept only when `> price` (guards against `0`/equal → `null`); `inStock` kept only when a real boolean, else `null` (unknown). |
+| **Types** | `ScrapedRow` and `curate`'s `Product` gain `originalPrice: number \| null` and `inStock: boolean \| null` (optional on `Product`, since eBay/Best Buy don't set them). |
+| **Storage** (`0006_scraped_signals.sql`) | `alter table public.scraped_products add column original_price numeric, in_stock boolean;` — additive/nullable; existing rows read as "unknown." |
+| **Writer** (`prewarm.ts`) | Payload now includes `original_price` + `in_stock`. |
+| **Reader/ranker** (`curate.ts`) | Maps the columns; **filters out `inStock === false`**; passes `originalPrice` to the ranker, which may note the saving in `why`. |
+
+All fields are **backward-compatible**: a `null` (old row, or a retailer that doesn't expose the
+signal) simply means "unknown" — nothing is filtered on `null`, and no discount is claimed.
+
+### Verification (live)
+
+```bash
+# 1. Live Firecrawl scrape confirmed the deepened schema extracts the fields
+#    (Nordstrom "white leather sneakers"): e.g. Vionic $79.99 down from $145, in stock.
+# 2. After a manual warm (gh workflow run prewarm.yml), the cache carried the data:
+```
+```sql
+select
+  count(*)                                          as total_rows,
+  count(*) filter (where original_price is not null) as with_discount,
+  count(*) filter (where in_stock is not null)       as with_stock
+from public.scraped_products;
+-- 380 total · 331 with_discount · 380 with_stock  (2026-07-26)
+```
