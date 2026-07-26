@@ -48,7 +48,7 @@ export default function AppPage() {
   function choose(opt: ShortlistOption) {
     setChosen(opt.name);
     if (result && user) {
-      void saveDecision(result.query, opt, result.elapsedMs).then(() =>
+      void saveDecision(result, opt).then(() =>
         setHistoryVersion((v) => v + 1)
       );
     }

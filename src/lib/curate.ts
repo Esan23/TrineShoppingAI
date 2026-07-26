@@ -24,11 +24,15 @@ export async function curate(req: CurateRequest): Promise<CurateResponse> {
   }
 }
 
-/** Persist a confirmed decision for the signed-in user (best-effort). */
+/**
+ * Persist a confirmed decision for the signed-in user (best-effort).
+ * Stores the chosen option plus the full trio that was shown (picks_shown)
+ * and the query's cache key (query_key), so we can later analyze
+ * what Trine offered vs. what the shopper picked.
+ */
 export async function saveDecision(
-  query: string,
-  option: ShortlistOption,
-  elapsedMs: number
+  result: CurateResponse,
+  option: ShortlistOption
 ): Promise<void> {
   if (!supabase) return;
   const {
@@ -37,12 +41,14 @@ export async function saveDecision(
   if (!user) return;
   await supabase.from("decisions").insert({
     user_id: user.id,
-    query,
+    query: result.query,
     chosen_name: option.name,
     chosen_price: option.price,
     chosen_url: option.url,
     match_score: option.match,
-    decided_in_ms: elapsedMs,
+    decided_in_ms: result.elapsedMs,
+    picks_shown: result.options,
+    query_key: result.queryKey,
   });
 }
 
@@ -89,6 +95,7 @@ function localDemoShortlist(req: CurateRequest, started: number): CurateResponse
 
   return {
     query: req.query,
+    queryKey: noun.toLowerCase().trim(),
     options,
     source: "demo",
     demoMode: true,

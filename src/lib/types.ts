@@ -28,6 +28,12 @@ export type QualityTier = "budget" | "mid" | "premium";
 export interface Preferences {
   budgetMax: number | null;
   preferredBrands: string[];
+  /** Brands to exclude outright — never shown, regardless of fit. */
+  blockedBrands: string[];
+  /** Categories the shopper cares about, e.g. ["audio", "footwear"]. */
+  categories: string[];
+  /** Free-text style/fit notes, e.g. "minimalist, no logos". */
+  styleNotes: string | null;
   qualityTier: QualityTier;
   minReviewScore: number;
 }
@@ -35,6 +41,9 @@ export interface Preferences {
 export const DEFAULT_PREFERENCES: Preferences = {
   budgetMax: null,
   preferredBrands: [],
+  blockedBrands: [],
+  categories: [],
+  styleNotes: null,
   qualityTier: "mid",
   minReviewScore: 0,
 };
@@ -53,6 +62,8 @@ export type CurateSource = "retailers" | "ai" | "demo";
 
 export interface CurateResponse {
   query: string;
+  /** Normalized cache key for this query (joins back to scraped_products). */
+  queryKey: string;
   options: ShortlistOption[];
   source: CurateSource;
   /** True when results are illustrative (no live retailer/LLM data). */

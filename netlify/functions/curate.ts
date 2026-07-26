@@ -55,6 +55,9 @@ interface ShortlistOption {
 interface Preferences {
   budgetMax: number | null;
   preferredBrands: string[];
+  blockedBrands?: string[];
+  categories?: string[];
+  styleNotes?: string | null;
   qualityTier: "budget" | "mid" | "premium";
   minReviewScore: number;
 }
@@ -66,8 +69,12 @@ function prefsLine(p?: Preferences): string {
   if (p.qualityTier === "budget") parts.push("leans toward the cheapest option that works");
   if (p.qualityTier === "premium") parts.push("prefers premium, buy-it-for-life quality");
   if (p.preferredBrands.length) parts.push(`favors these brands when they fit: ${p.preferredBrands.join(", ")}`);
+  if (p.blockedBrands?.length) parts.push(`will NOT consider these brands — never suggest them: ${p.blockedBrands.join(", ")}`);
+  if (p.categories?.length) parts.push(`typically shops these categories: ${p.categories.join(", ")}`);
   if (p.minReviewScore > 0) parts.push(`wants a review score of at least ${p.minReviewScore} stars`);
-  return parts.length ? `\n- The shopper ${parts.join("; ")}.` : "";
+  const line = parts.length ? `\n- The shopper ${parts.join("; ")}.` : "";
+  const notes = p.styleNotes?.trim() ? `\n- Style/fit notes from the shopper: ${p.styleNotes.trim()}` : "";
+  return line + notes;
 }
 
 const json = (status: number, body: unknown) => ({
@@ -106,9 +113,14 @@ export const handler = async (event: {
   }
   if (!query) return json(400, { error: "query is required" });
 
+  // Normalized cache key for this query — same derivation used to read the
+  // scraped_products cache — so a saved decision can join back to its sources.
+  const queryKey = searchKeywords(query).toLowerCase().trim();
+
   const reply = (options: ShortlistOption[], source: "retailers" | "ai" | "demo") =>
     json(200, {
       query,
+      queryKey,
       options,
       source,
       demoMode: source === "demo",
@@ -165,14 +177,22 @@ async function fetchCandidates(
   const all = settled.flatMap((s) => (s.status === "fulfilled" ? s.value : []));
 
   const minReview = preferences?.minReviewScore ?? 0;
+  const blocked = (preferences?.blockedBrands ?? [])
+    .map((b) => b.toLowerCase().trim())
+    .filter(Boolean);
 
   // De-duplicate by lowercased title; keep in-budget items with a usable URL,
-  // and drop ones that fall below the user's minimum review score (when known).
+  // drop ones below the user's minimum review score (when known), and exclude
+  // any brand the shopper has blocked (matched on the brand field or title).
   const seen = new Set<string>();
   return all.filter((p) => {
     if (!p.productUrl || !p.title) return false;
     if (budgetMax && p.price > budgetMax) return false;
     if (minReview > 0 && p.reviewScore != null && p.reviewScore < minReview) return false;
+    if (blocked.length) {
+      const hay = `${p.brand ?? ""} ${p.title}`.toLowerCase();
+      if (blocked.some((b) => hay.includes(b))) return false;
+    }
     const key = p.title.toLowerCase().trim();
     if (seen.has(key)) return false;
     seen.add(key);

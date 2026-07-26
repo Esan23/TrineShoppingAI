@@ -16,6 +16,8 @@ export default function PreferencesPage() {
   const { user, loading, configured } = useAuth();
   const [prefs, setPrefs] = useState<Preferences>(DEFAULT_PREFERENCES);
   const [brandsText, setBrandsText] = useState("");
+  const [blockedText, setBlockedText] = useState("");
+  const [categoriesText, setCategoriesText] = useState("");
   const [status, setStatus] = useState<"idle" | "loading" | "saving" | "saved">("loading");
   const [error, setError] = useState<string | null>(null);
 
@@ -28,6 +30,8 @@ export default function PreferencesPage() {
     getPreferences().then((p) => {
       setPrefs(p);
       setBrandsText(p.preferredBrands.join(", "));
+      setBlockedText(p.blockedBrands.join(", "));
+      setCategoriesText(p.categories.join(", "));
       setStatus("idle");
     });
   }, [user, loading]);
@@ -38,12 +42,14 @@ export default function PreferencesPage() {
     e.preventDefault();
     setStatus("saving");
     setError(null);
+    const csv = (s: string) =>
+      s.split(",").map((v) => v.trim()).filter(Boolean);
     const cleaned: Preferences = {
       ...prefs,
-      preferredBrands: brandsText
-        .split(",")
-        .map((b) => b.trim())
-        .filter(Boolean),
+      preferredBrands: csv(brandsText),
+      blockedBrands: csv(blockedText),
+      categories: csv(categoriesText),
+      styleNotes: prefs.styleNotes?.trim() ? prefs.styleNotes.trim() : null,
     };
     const { error } = await savePreferences(cleaned);
     if (error) {
@@ -133,6 +139,56 @@ export default function PreferencesPage() {
                 onChange={(e) => setBrandsText(e.target.value)}
                 placeholder="e.g. Anker, Sony, Patagonia"
                 className="h-11 w-full rounded-[10px] border border-slate-300 bg-white px-3 text-sm outline-none transition focus:ring-2 focus:ring-brand-cyan dark:border-white/15 dark:bg-white/[0.04] dark:text-white"
+              />
+            </div>
+
+            {/* Blocked brands */}
+            <div>
+              <label htmlFor="blocked" className="text-sm font-medium text-ink dark:text-slate-200">
+                Blocked brands
+              </label>
+              <p className="mb-2 text-xs text-muted">Comma-separated. We'll never suggest these.</p>
+              <input
+                id="blocked"
+                type="text"
+                value={blockedText}
+                onChange={(e) => setBlockedText(e.target.value)}
+                placeholder="e.g. Temu, SHEIN"
+                className="h-11 w-full rounded-[10px] border border-slate-300 bg-white px-3 text-sm outline-none transition focus:ring-2 focus:ring-brand-cyan dark:border-white/15 dark:bg-white/[0.04] dark:text-white"
+              />
+            </div>
+
+            {/* Categories of interest */}
+            <div>
+              <label htmlFor="categories" className="text-sm font-medium text-ink dark:text-slate-200">
+                Categories you shop
+              </label>
+              <p className="mb-2 text-xs text-muted">Comma-separated. Helps us frame your picks.</p>
+              <input
+                id="categories"
+                type="text"
+                value={categoriesText}
+                onChange={(e) => setCategoriesText(e.target.value)}
+                placeholder="e.g. audio, footwear, home"
+                className="h-11 w-full rounded-[10px] border border-slate-300 bg-white px-3 text-sm outline-none transition focus:ring-2 focus:ring-brand-cyan dark:border-white/15 dark:bg-white/[0.04] dark:text-white"
+              />
+            </div>
+
+            {/* Style / fit notes */}
+            <div>
+              <label htmlFor="style" className="text-sm font-medium text-ink dark:text-slate-200">
+                Style &amp; fit notes
+              </label>
+              <p className="mb-2 text-xs text-muted">
+                Anything else that should shape your picks — in your own words.
+              </p>
+              <textarea
+                id="style"
+                rows={3}
+                value={prefs.styleNotes ?? ""}
+                onChange={(e) => setPrefs((p) => ({ ...p, styleNotes: e.target.value }))}
+                placeholder="e.g. Minimalist, no visible logos. Prefer durable over trendy."
+                className="w-full rounded-[10px] border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:ring-2 focus:ring-brand-cyan dark:border-white/15 dark:bg-white/[0.04] dark:text-white"
               />
             </div>
 

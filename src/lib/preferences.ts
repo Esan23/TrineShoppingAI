@@ -11,7 +11,9 @@ export async function getPreferences(): Promise<Preferences> {
 
   const { data, error } = await supabase
     .from("preferences")
-    .select("budget_max, preferred_brands, quality_tier, min_review_score")
+    .select(
+      "budget_max, preferred_brands, blocked_brands, categories, style_notes, quality_tier, min_review_score"
+    )
     .eq("user_id", user.id)
     .maybeSingle();
 
@@ -19,6 +21,9 @@ export async function getPreferences(): Promise<Preferences> {
   return {
     budgetMax: data.budget_max ?? null,
     preferredBrands: data.preferred_brands ?? [],
+    blockedBrands: data.blocked_brands ?? [],
+    categories: data.categories ?? [],
+    styleNotes: data.style_notes ?? null,
     qualityTier: data.quality_tier ?? "mid",
     minReviewScore: Number(data.min_review_score ?? 0),
   };
@@ -37,6 +42,9 @@ export async function savePreferences(prefs: Preferences): Promise<{ error: stri
       user_id: user.id,
       budget_max: prefs.budgetMax,
       preferred_brands: prefs.preferredBrands,
+      blocked_brands: prefs.blockedBrands,
+      categories: prefs.categories,
+      style_notes: prefs.styleNotes,
       quality_tier: prefs.qualityTier,
       min_review_score: prefs.minReviewScore,
       updated_at: new Date().toISOString(),
