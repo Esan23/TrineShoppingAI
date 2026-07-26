@@ -68,6 +68,10 @@ interface Product {
   reviewScore: number | null;
   reviewCount: number | null;
   brand: string | null;
+  /** Pre-discount list price when on sale (from Firecrawl); else null/undefined. */
+  originalPrice?: number | null;
+  /** Availability from Firecrawl: true in stock, false sold out, null unknown. */
+  inStock?: boolean | null;
 }
 
 interface ShortlistOption {
@@ -268,6 +272,7 @@ async function fetchCandidates(
   const seen = new Set<string>();
   return all.filter((p) => {
     if (!p.productUrl || !p.title) return false;
+    if (p.inStock === false) return false; // never recommend a sold-out item
     if (budgetMax && p.price > budgetMax) return false;
     if (minReview > 0 && p.reviewScore != null && p.reviewScore < minReview) return false;
     if (blocked.length) {
@@ -400,6 +405,8 @@ async function readScrapedCache(query: string, url: string, anonKey: string): Pr
         reviewScore: r.review_score != null ? Number(r.review_score) : null,
         reviewCount: r.review_count != null ? Number(r.review_count) : null,
         brand: r.brand ?? null,
+        originalPrice: r.original_price != null ? Number(r.original_price) : null,
+        inStock: typeof r.in_stock === "boolean" ? r.in_stock : null,
       })
     );
   } catch {
@@ -423,6 +430,7 @@ async function rankRealProducts(
 Rules:
 - Rank 1 = the safest low-regret pick for most people; then a value pick and a premium pick.
 - Judge on price-for-value, review score and volume, brand, and fit to the request.${budgetLine}${prefsLine(preferences)}${historyLine(recentPicks)}
+- When a candidate shows an "originalPrice" above its price, it's on sale — you may note the saving in "why" (e.g. "down from \$X"). All candidates are in stock.
 - Each pick needs a one-sentence "why" and an honest "who it's NOT for".
 - "match" is a 0–100 confidence score; keep them distinct and honest.
 - Voice: plain, economical, reassuring. No hype, no exclamation points.
@@ -433,6 +441,7 @@ Rules:
     retailer: p.retailer,
     title: p.title,
     price: `$${p.price.toFixed(2)}`,
+    originalPrice: p.originalPrice != null ? `$${p.originalPrice.toFixed(2)}` : undefined,
     reviewScore: p.reviewScore,
     reviewCount: p.reviewCount,
     brand: p.brand,
