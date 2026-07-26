@@ -39,3 +39,36 @@ export async function deleteDecision(id: string): Promise<void> {
   if (!supabase) return;
   await supabase.from("decisions").delete().eq("id", id);
 }
+
+/**
+ * The signed-in user's few most recent chosen items — standing memory (Ch.7)
+ * passed to the engine to calibrate taste on close calls. Kept small on purpose.
+ */
+export async function recentPicks(limit = 5): Promise<{ name: string; price: string }[]> {
+  if (!supabase) return [];
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return [];
+  const { data, error } = await supabase
+    .from("decisions")
+    .select("chosen_name, chosen_price")
+    .eq("user_id", user.id)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (error || !data) return [];
+  return data.map((d) => ({
+    name: (d.chosen_name as string) ?? "",
+    price: (d.chosen_price as string) ?? "",
+  }));
+}
+
+/** Delete ALL of the signed-in user's decision history (Ch.7 data control). */
+export async function clearAllDecisions(): Promise<void> {
+  if (!supabase) return;
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return;
+  await supabase.from("decisions").delete().eq("user_id", user.id);
+}

@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { Link, Navigate } from "react-router-dom";
-import { CheckCircleIcon } from "@heroicons/react/24/outline";
+import { CheckCircleIcon, TrashIcon } from "@heroicons/react/24/outline";
 import AppHeader from "../components/app/AppHeader";
 import { useAuth } from "../lib/auth";
 import { getPreferences, savePreferences } from "../lib/preferences";
+import { clearAllDecisions } from "../lib/decisions";
 import { DEFAULT_PREFERENCES, type Preferences, type QualityTier } from "../lib/types";
 
 const TIERS: { value: QualityTier; label: string; hint: string }[] = [
@@ -16,7 +17,9 @@ export default function PreferencesPage() {
   const { user, loading, configured } = useAuth();
   const [prefs, setPrefs] = useState<Preferences>(DEFAULT_PREFERENCES);
   const [brandsText, setBrandsText] = useState("");
-  const [status, setStatus] = useState<"idle" | "loading" | "saving" | "saved">("loading");
+  const [blockedText, setBlockedText] = useState("");
+  const [categoriesText, setCategoriesText] = useState("");
+  const [status, setStatus] = useState<"idle" | "loading" | "saving" | "saved" | "cleared">("loading");
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -28,6 +31,8 @@ export default function PreferencesPage() {
     getPreferences().then((p) => {
       setPrefs(p);
       setBrandsText(p.preferredBrands.join(", "));
+      setBlockedText(p.blockedBrands.join(", "));
+      setCategoriesText(p.categories.join(", "));
       setStatus("idle");
     });
   }, [user, loading]);
@@ -38,12 +43,14 @@ export default function PreferencesPage() {
     e.preventDefault();
     setStatus("saving");
     setError(null);
+    const csv = (s: string) =>
+      s.split(",").map((v) => v.trim()).filter(Boolean);
     const cleaned: Preferences = {
       ...prefs,
-      preferredBrands: brandsText
-        .split(",")
-        .map((b) => b.trim())
-        .filter(Boolean),
+      preferredBrands: csv(brandsText),
+      blockedBrands: csv(blockedText),
+      categories: csv(categoriesText),
+      styleNotes: prefs.styleNotes?.trim() ? prefs.styleNotes.trim() : null,
     };
     const { error } = await savePreferences(cleaned);
     if (error) {
@@ -54,6 +61,31 @@ export default function PreferencesPage() {
       setStatus("saved");
       setTimeout(() => setStatus("idle"), 2500);
     }
+  }
+
+  // Ch.7 data control: wipe the shopper's preferences AND decision history.
+  async function clearData() {
+    if (
+      !window.confirm(
+        "Clear all your saved preferences and decision history? This can't be undone."
+      )
+    )
+      return;
+    setStatus("loading");
+    setError(null);
+    await clearAllDecisions();
+    const { error } = await savePreferences(DEFAULT_PREFERENCES);
+    if (error) {
+      setError(error);
+      setStatus("idle");
+      return;
+    }
+    setPrefs(DEFAULT_PREFERENCES);
+    setBrandsText("");
+    setBlockedText("");
+    setCategoriesText("");
+    setStatus("cleared");
+    setTimeout(() => setStatus("idle"), 2500);
   }
 
   return (
@@ -136,6 +168,56 @@ export default function PreferencesPage() {
               />
             </div>
 
+            {/* Blocked brands */}
+            <div>
+              <label htmlFor="blocked" className="text-sm font-medium text-ink dark:text-slate-200">
+                Blocked brands
+              </label>
+              <p className="mb-2 text-xs text-muted">Comma-separated. We'll never suggest these.</p>
+              <input
+                id="blocked"
+                type="text"
+                value={blockedText}
+                onChange={(e) => setBlockedText(e.target.value)}
+                placeholder="e.g. Temu, SHEIN"
+                className="h-11 w-full rounded-[10px] border border-slate-300 bg-white px-3 text-sm outline-none transition focus:ring-2 focus:ring-brand-cyan dark:border-white/15 dark:bg-white/[0.04] dark:text-white"
+              />
+            </div>
+
+            {/* Categories of interest */}
+            <div>
+              <label htmlFor="categories" className="text-sm font-medium text-ink dark:text-slate-200">
+                Categories you shop
+              </label>
+              <p className="mb-2 text-xs text-muted">Comma-separated. Helps us frame your picks.</p>
+              <input
+                id="categories"
+                type="text"
+                value={categoriesText}
+                onChange={(e) => setCategoriesText(e.target.value)}
+                placeholder="e.g. audio, footwear, home"
+                className="h-11 w-full rounded-[10px] border border-slate-300 bg-white px-3 text-sm outline-none transition focus:ring-2 focus:ring-brand-cyan dark:border-white/15 dark:bg-white/[0.04] dark:text-white"
+              />
+            </div>
+
+            {/* Style / fit notes */}
+            <div>
+              <label htmlFor="style" className="text-sm font-medium text-ink dark:text-slate-200">
+                Style &amp; fit notes
+              </label>
+              <p className="mb-2 text-xs text-muted">
+                Anything else that should shape your picks — in your own words.
+              </p>
+              <textarea
+                id="style"
+                rows={3}
+                value={prefs.styleNotes ?? ""}
+                onChange={(e) => setPrefs((p) => ({ ...p, styleNotes: e.target.value }))}
+                placeholder="e.g. Minimalist, no visible logos. Prefer durable over trendy."
+                className="w-full rounded-[10px] border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:ring-2 focus:ring-brand-cyan dark:border-white/15 dark:bg-white/[0.04] dark:text-white"
+              />
+            </div>
+
             {/* Min review score */}
             <div>
               <div className="flex items-baseline justify-between">
@@ -182,6 +264,30 @@ export default function PreferencesPage() {
               </Link>
             </div>
           </form>
+
+          {/* Data control (Ch.7): the shopper owns and can wipe their memory. */}
+          <div className="mt-12 rounded-2xl border border-error/25 bg-error/[0.03] p-5">
+            <h2 className="text-sm font-semibold text-ink dark:text-slate-200">Your data</h2>
+            <p className="mt-1 text-xs text-muted dark:text-slate-400">
+              Trine remembers your preferences and past decisions to tune your
+              shortlists. You can erase all of it at any time.
+            </p>
+            <div className="mt-4 flex items-center gap-4">
+              <button
+                type="button"
+                onClick={clearData}
+                disabled={status === "saving" || status === "loading"}
+                className="inline-flex items-center gap-2 rounded-[10px] border border-error/40 px-4 py-2.5 text-sm font-medium text-error transition hover:bg-error/10 disabled:opacity-60"
+              >
+                <TrashIcon className="h-4 w-4" /> Clear all my data
+              </button>
+              {status === "cleared" && (
+                <span className="inline-flex items-center gap-1.5 text-sm font-medium text-success">
+                  <CheckCircleIcon className="h-5 w-5" /> Cleared
+                </span>
+              )}
+            </div>
+          </div>
         </div>
       </main>
     </div>

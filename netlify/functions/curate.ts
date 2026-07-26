@@ -25,6 +25,37 @@ const MODEL = "claude-haiku-4-5";
 // scripts/prewarm.ts). A fresh cache row must be newer than this to be used.
 const SCRAPE_TTL_MS = 24 * 60 * 60 * 1000;
 
+// ── Plan Mode: confirm intent before ranking (Cognition Economy Ch.6) ──────
+//
+// A wrong ASSUMPTION (budget, use-case, form factor) compounds into three
+// confident-but-wrong picks. To catch that before it happens, Trine confirms
+// intent first — but only when the stakes justify the extra step. The chapter's
+// own matrix (complexity × irreversibility) says a cheap, reversible pick
+// should stay on the fast path, so we gate the check on STAKES, not ambiguity.
+const HIGH_STAKES_USD = 500;
+// High-consideration categories where a wrong pick is expensive to undo, even
+// when no explicit budget was given. Matched on WORD BOUNDARIES (not raw
+// substring) so "ring light" / "smartwatch" / "stopwatch" don't false-trigger.
+// Bare "ring" is intentionally omitted (too ambiguous); "engagement"/"diamond"
+// carry the jewelry case instead.
+const HIGH_STAKES_KEYWORDS = [
+  "laptop", "macbook", "notebook", "desktop", "computer",
+  "tv", "television", "monitor", "projector",
+  "mattress", "sofa", "couch", "refrigerator", "fridge", "washer", "dryer", "dishwasher", "oven",
+  "camera", "lens", "drone",
+  "phone", "iphone", "smartphone", "tablet", "ipad",
+  "watch", "engagement", "diamond",
+  "bike", "ebike", "treadmill", "peloton",
+  "stroller", "car seat", "guitar", "piano",
+];
+
+/** True when a request is costly enough to be worth a confirm-first step. */
+function isHighStakes(query: string, effectiveBudget?: number): boolean {
+  if (effectiveBudget && effectiveBudget >= HIGH_STAKES_USD) return true;
+  const q = query.toLowerCase();
+  return HIGH_STAKES_KEYWORDS.some((k) => new RegExp(`\\b${k}\\b`).test(q));
+}
+
 // ── Types ────────────────────────────────────────────────────────────────
 
 interface Product {
@@ -55,6 +86,9 @@ interface ShortlistOption {
 interface Preferences {
   budgetMax: number | null;
   preferredBrands: string[];
+  blockedBrands?: string[];
+  categories?: string[];
+  styleNotes?: string | null;
   qualityTier: "budget" | "mid" | "premium";
   minReviewScore: number;
 }
@@ -66,8 +100,30 @@ function prefsLine(p?: Preferences): string {
   if (p.qualityTier === "budget") parts.push("leans toward the cheapest option that works");
   if (p.qualityTier === "premium") parts.push("prefers premium, buy-it-for-life quality");
   if (p.preferredBrands.length) parts.push(`favors these brands when they fit: ${p.preferredBrands.join(", ")}`);
+  if (p.blockedBrands?.length) parts.push(`will NOT consider these brands — never suggest them: ${p.blockedBrands.join(", ")}`);
+  if (p.categories?.length) parts.push(`typically shops these categories: ${p.categories.join(", ")}`);
   if (p.minReviewScore > 0) parts.push(`wants a review score of at least ${p.minReviewScore} stars`);
-  return parts.length ? `\n- The shopper ${parts.join("; ")}.` : "";
+  const line = parts.length ? `\n- The shopper ${parts.join("; ")}.` : "";
+  const notes = p.styleNotes?.trim() ? `\n- Style/fit notes from the shopper: ${p.styleNotes.trim()}` : "";
+  return line + notes;
+}
+
+// A few of the shopper's most recent picks — standing MEMORY (Ch.7), used only
+// to calibrate taste when a choice is otherwise a toss-up. Deliberately terse
+// so it informs, rather than pollutes, the ranking context.
+interface RecentPick {
+  name: string;
+  price: string;
+}
+
+/** A plain-language line describing the shopper's recent picks (or ""). */
+function historyLine(recent?: RecentPick[]): string {
+  if (!recent?.length) return "";
+  const items = recent
+    .slice(0, 5)
+    .map((r) => `${r.name}${r.price ? ` (${r.price})` : ""}`)
+    .join("; ");
+  return `\n- For taste calibration only — these past picks may be unrelated to this request: the shopper recently chose ${items}. Lean toward that style and price level ONLY when the choice is otherwise a toss-up.`;
 }
 
 const json = (status: number, body: unknown) => ({
@@ -94,6 +150,8 @@ export const handler = async (event: {
   let query = "";
   let budgetMax: number | undefined;
   let preferences: Preferences | undefined;
+  let skipClarify = false;
+  let recentPicks: RecentPick[] | undefined;
   try {
     const parsed = JSON.parse(event.body || "{}");
     query = String(parsed.query || "").trim();
@@ -101,14 +159,30 @@ export const handler = async (event: {
     preferences = parsed.preferences && typeof parsed.preferences === "object"
       ? (parsed.preferences as Preferences)
       : undefined;
+    skipClarify = parsed.skipClarify === true;
+    recentPicks = Array.isArray(parsed.recentPicks)
+      ? parsed.recentPicks
+          .filter((r: unknown): r is { name: unknown; price?: unknown } =>
+            !!r && typeof (r as { name?: unknown }).name === "string")
+          .map((r: { name: unknown; price?: unknown }) => ({
+            name: String(r.name),
+            price: r.price != null ? String(r.price) : "",
+          }))
+          .slice(0, 5)
+      : undefined;
   } catch {
     return json(400, { error: "Invalid JSON body" });
   }
   if (!query) return json(400, { error: "query is required" });
 
+  // Normalized cache key for this query — same derivation used to read the
+  // scraped_products cache — so a saved decision can join back to its sources.
+  const queryKey = searchKeywords(query).toLowerCase().trim();
+
   const reply = (options: ShortlistOption[], source: "retailers" | "ai" | "demo") =>
     json(200, {
       query,
+      queryKey,
       options,
       source,
       demoMode: source === "demo",
@@ -119,14 +193,33 @@ export const handler = async (event: {
   if (!apiKey) return reply(demoShortlist(query, budgetMax), "demo");
 
   try {
+    // Plan Mode: on high-stakes requests, confirm intent before ranking — but
+    // only if Claude judges a real gap remains. If it's already specific, or
+    // the shopper already confirmed (skipClarify), fall straight through.
+    const effectiveBudget = budgetMax ?? preferences?.budgetMax ?? undefined;
+    if (!skipClarify && isHighStakes(query, effectiveBudget)) {
+      const clarify = await assessClarify(apiKey, query, effectiveBudget, preferences);
+      if (clarify) {
+        return json(200, {
+          query,
+          queryKey,
+          options: [],
+          source: "ai" as const,
+          demoMode: false,
+          elapsedMs: Date.now() - started,
+          clarify,
+        });
+      }
+    }
+
     // Tier 1: try to gather real retailer listings.
     const products = await fetchCandidates(query, budgetMax, preferences);
     if (products.length > 0) {
-      const ranked = await rankRealProducts(apiKey, query, products, budgetMax, preferences);
+      const ranked = await rankRealProducts(apiKey, query, products, budgetMax, preferences, recentPicks);
       if (ranked.length > 0) return reply(ranked, "retailers");
     }
     // Tier 2: no retailer data — let Claude suggest representative picks.
-    return reply(await generateShortlist(apiKey, query, budgetMax, preferences), "ai");
+    return reply(await generateShortlist(apiKey, query, budgetMax, preferences, recentPicks), "ai");
   } catch (err) {
     console.error("curate error:", err);
     return reply(demoShortlist(query, budgetMax), "demo");
@@ -165,14 +258,22 @@ async function fetchCandidates(
   const all = settled.flatMap((s) => (s.status === "fulfilled" ? s.value : []));
 
   const minReview = preferences?.minReviewScore ?? 0;
+  const blocked = (preferences?.blockedBrands ?? [])
+    .map((b) => b.toLowerCase().trim())
+    .filter(Boolean);
 
   // De-duplicate by lowercased title; keep in-budget items with a usable URL,
-  // and drop ones that fall below the user's minimum review score (when known).
+  // drop ones below the user's minimum review score (when known), and exclude
+  // any brand the shopper has blocked (matched on the brand field or title).
   const seen = new Set<string>();
   return all.filter((p) => {
     if (!p.productUrl || !p.title) return false;
     if (budgetMax && p.price > budgetMax) return false;
     if (minReview > 0 && p.reviewScore != null && p.reviewScore < minReview) return false;
+    if (blocked.length) {
+      const hay = `${p.brand ?? ""} ${p.title}`.toLowerCase();
+      if (blocked.some((b) => hay.includes(b))) return false;
+    }
     const key = p.title.toLowerCase().trim();
     if (seen.has(key)) return false;
     seen.add(key);
@@ -313,14 +414,15 @@ async function rankRealProducts(
   query: string,
   products: Product[],
   budgetMax?: number,
-  preferences?: Preferences
+  preferences?: Preferences,
+  recentPicks?: RecentPick[]
 ): Promise<ShortlistOption[]> {
   const budgetLine = budgetMax ? `\n- Hard budget ceiling: $${budgetMax}.` : "";
   const system = `You are Trine, a calm, trustworthy shopping-decision assistant. From the candidate products below, pick exactly THREE — like a smart friend who already did the research.
 
 Rules:
 - Rank 1 = the safest low-regret pick for most people; then a value pick and a premium pick.
-- Judge on price-for-value, review score and volume, brand, and fit to the request.${budgetLine}${prefsLine(preferences)}
+- Judge on price-for-value, review score and volume, brand, and fit to the request.${budgetLine}${prefsLine(preferences)}${historyLine(recentPicks)}
 - Each pick needs a one-sentence "why" and an honest "who it's NOT for".
 - "match" is a 0–100 confidence score; keep them distinct and honest.
 - Voice: plain, economical, reassuring. No hype, no exclamation points.
@@ -404,7 +506,8 @@ async function generateShortlist(
   apiKey: string,
   query: string,
   budgetMax?: number,
-  preferences?: Preferences
+  preferences?: Preferences,
+  recentPicks?: RecentPick[]
 ): Promise<ShortlistOption[]> {
   const budgetLine = budgetMax ? `\n- Hard budget ceiling: $${budgetMax}.` : "";
   const system = `You are Trine, a calm, trustworthy shopping-decision assistant. A busy person describes what they need in plain words and you hand back a confident shortlist of exactly THREE options.
@@ -413,7 +516,7 @@ Rules:
 - Recommend real, well-known product types/models a shopper could actually find today.
 - Rank 1 = the safest low-regret pick for most people; then a value option and a premium option.
 - Each option needs a one-sentence "why" and an honest "who it's NOT for".
-- "price" is a realistic estimate (e.g. "~$70"); stay at or under any stated budget.${budgetLine}${prefsLine(preferences)}
+- "price" is a realistic estimate (e.g. "~$70"); stay at or under any stated budget.${budgetLine}${prefsLine(preferences)}${historyLine(recentPicks)}
 - "name" must be a specific, real product: include the brand and model (e.g. "Steelcase Series 1", not "ergonomic office chair").
 - "url" must be a Google Shopping search for THAT EXACT product, built from its name: https://www.google.com/search?tbm=shop&q=<url-encoded "name"> — so each of the three links lands on a different, specific item, never the same generic search.
 - "match" is a 0–100 confidence score; keep them distinct and honest.
@@ -466,6 +569,72 @@ Rules:
         ? `https://www.google.com/search?tbm=shop&q=${encodeURIComponent(o.name)}`
         : o.url,
     }));
+}
+
+// ── Claude: confirm intent on high-stakes requests (Plan Mode) ────────────
+
+interface ClarifyPrompt {
+  understanding: string;
+  question: string;
+  suggestions: string[];
+}
+
+/**
+ * For a high-stakes request, ask Claude whether it has enough to rank well.
+ * Returns a confirmation prompt when a real gap remains, or null to proceed.
+ * Claude is the judge: a request that's already specific returns null, so the
+ * shopper is never asked a needless question.
+ */
+async function assessClarify(
+  apiKey: string,
+  query: string,
+  budgetMax?: number,
+  preferences?: Preferences
+): Promise<ClarifyPrompt | null> {
+  const budgetLine = budgetMax ? `\n- Known budget: about $${budgetMax}.` : "\n- No budget stated.";
+  const system = `You are Trine, a calm shopping-decision assistant. This is a HIGH-STAKES purchase (expensive or hard to undo), so before recommending anything you make sure you understand the request — like a good salesperson who asks one smart question instead of guessing.
+
+Decide whether you can already give three well-targeted picks, or whether ONE missing detail would materially change them (e.g. budget, primary use, size/fit, must-have feature).${budgetLine}${prefsLine(preferences)}
+
+- If the request is already specific enough to rank well, set needsClarification=false and leave the other fields empty.
+- If a real gap remains, set needsClarification=true and:
+  - "understanding": one sentence reflecting back what you DID understand.
+  - "question": the single most useful question to close the biggest gap.
+  - "suggestions": 2–4 short tappable answers to that question (e.g. price bands or use-cases).
+- Ask at most one question. Never ask about something the shopper already stated. Voice: plain, warm, economical.`;
+
+  try {
+    const data = await callClaude(apiKey, {
+      system,
+      tool: {
+        name: "plan_clarification",
+        description: "Decide whether to confirm intent before ranking, and if so, what to ask.",
+        input_schema: {
+          type: "object",
+          properties: {
+            needsClarification: { type: "boolean" },
+            understanding: { type: "string" },
+            question: { type: "string" },
+            suggestions: { type: "array", items: { type: "string" }, maxItems: 4 },
+          },
+          required: ["needsClarification"],
+        },
+      },
+      userText: `The shopper asked for: "${query}"`,
+    });
+
+    if (!data?.needsClarification || !data.question) return null;
+    return {
+      understanding: String(data.understanding ?? ""),
+      question: String(data.question),
+      suggestions: Array.isArray(data.suggestions)
+        ? data.suggestions.map((s: unknown) => String(s)).slice(0, 4)
+        : [],
+    };
+  } catch {
+    // If the assessment fails, don't block the shopper — fall through to rank.
+    return null;
+  }
 }
 
 // ── Anthropic call (shared) ──────────────────────────────────────────────
